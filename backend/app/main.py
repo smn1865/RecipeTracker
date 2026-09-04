@@ -34,6 +34,14 @@ async def lifespan(app: FastAPI):
         recipe_columns = {row[1] for row in recipes}
         for column, sql_type in {"meal_type": "VARCHAR(32) DEFAULT 'Lunch'", "tags": "VARCHAR(255) DEFAULT 'Quick & Easy'"}.items():
             if column not in recipe_columns: await connection.exec_driver_sql(f"ALTER TABLE recipes ADD COLUMN {column} {sql_type}")
+        pantry_columns = {row[1] for row in (await connection.exec_driver_sql("PRAGMA table_info(pantry_items)")).all()}
+        if "ingredient_id" not in pantry_columns:
+            await connection.exec_driver_sql("ALTER TABLE pantry_items ADD COLUMN ingredient_id INTEGER")
+        meal_columns = {row[1] for row in (await connection.exec_driver_sql("PRAGMA table_info(weekly_meal_assignments)")).all()}
+        if "eaten" not in meal_columns:
+            await connection.exec_driver_sql("ALTER TABLE weekly_meal_assignments ADD COLUMN eaten BOOLEAN DEFAULT 0")
+        if "eaten_at" not in meal_columns:
+            await connection.exec_driver_sql("ALTER TABLE weekly_meal_assignments ADD COLUMN eaten_at DATETIME")
     async with SessionLocal() as session: await seed(session)
     yield
 
@@ -145,8 +153,10 @@ from .routers.planner import router as planner_router
 from .routers.ingredients import router as ingredients_router
 from .routers.search import router as search_router
 from .routers.recipes import router as recipes_router
+from .routers.pantry import router as pantry_router
 app.include_router(stores_router)
 app.include_router(planner_router)
 app.include_router(ingredients_router)
 app.include_router(search_router)
 app.include_router(recipes_router)
+app.include_router(pantry_router)

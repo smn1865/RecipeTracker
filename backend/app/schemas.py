@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class RegisterRequest(BaseModel):
@@ -45,6 +46,27 @@ class PantryCreate(BaseModel):
 class PantryOut(PantryCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
+
+class PantryItemCreate(BaseModel):
+    ingredient_id: int = Field(gt=0)
+    quantity: float = Field(gt=0)
+    unit: str = Field(min_length=1, max_length=32)
+    expiration_date: date | None = None
+
+class PantryItemUpdate(BaseModel):
+    quantity: float | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, min_length=1, max_length=32)
+    expiration_date: date | None = None
+    remove: bool = False
+
+class PantryItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    ingredient_id: int
+    ingredient_name: str
+    quantity: float
+    unit: str
+    expiration_date: date | None = None
 
 class NutritionProfile(BaseModel):
     bmi: float
@@ -182,17 +204,11 @@ class ConsolidateRequest(BaseModel):
     assignments: list[MealAssignmentIn]
     weekly_budget: float = Field(gt=0)
 
-class ConsolidateResponse(BaseModel):
-    total_cost: float
-    weekly_budget: float
-    exceeds_budget: bool
-    missing_ingredients: list[IngredientNeed]
-    swap_suggestions: list[str]
-
 class AutoGenerateRequest(BaseModel):
     weekly_budget: float | None = Field(default=None, gt=0)
 
 class PlannedMeal(BaseModel):
+    meal_id: int
     day: str
     slot: str
     recipe_id: int
@@ -202,6 +218,16 @@ class PlannedMeal(BaseModel):
     protein_g: float
     carbs_g: float
     fat_g: float
+    eaten: bool = False
+    eaten_at: datetime | None = None
+
+class ConsolidateResponse(BaseModel):
+    total_cost: float
+    weekly_budget: float
+    exceeds_budget: bool
+    missing_ingredients: list[IngredientNeed]
+    swap_suggestions: list[str]
+    meals: list[PlannedMeal] = Field(default_factory=list)
 
 class AggregatedIngredient(BaseModel):
     ingredient_name: str
@@ -286,12 +312,29 @@ class RecipeIngredientStorePrice(BaseModel):
     navigation_url: str
 
 class RecipeIngredientSourcing(BaseModel):
+    ingredient_id: int | None = None
     ingredient_name: str
     required_quantity: float
     pantry_quantity: float
     missing_quantity: float
+    coverage_status: Literal["FULLY_OWNED", "PARTIALLY_OWNED", "MISSING"]
     unit: str
     store_options: list[RecipeIngredientStorePrice]
+
+class IngredientUsage(BaseModel):
+    ingredient_id: int = Field(gt=0)
+    used_amount: float = Field(gt=0)
+    unit: str | None = None
+
+class MealConsumeRequest(BaseModel):
+    used_default_quantities: bool = True
+    custom_ingredient_usage: list[IngredientUsage] = Field(default_factory=list)
+
+class MealConsumeResponse(BaseModel):
+    meal_id: int
+    eaten: bool
+    eaten_at: datetime
+    pantry_items: list[PantryItemResponse]
 
 class MealStoreChoice(BaseModel):
     store_id: int

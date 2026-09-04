@@ -9,6 +9,7 @@ from ..main import current_user
 from ..models import LocalStore, PantryItem, Recipe, StoreInventoryItem, StorePrice, User
 from ..schemas import RecipeSourcingResponse
 from ..services.location import distance_km, fallback_option, get_currency_for_coords, user_coordinates
+from ..services.recipe_matcher import recipe_coverage
 
 router=APIRouter(prefix="/api/recipes",tags=["recipes"])
 
@@ -18,11 +19,11 @@ async def recipe_sourcing(recipe_id: int, radius_km: float=Query(10,gt=0,le=50),
     if not recipe: raise HTTPException(404,"Recipe not found")
     lat,lon=user_coordinates(user.lat,user.lon); currency,symbol,rate=get_currency_for_coords(lat,lon)
     pantry=(await session.scalars(select(PantryItem).where(PantryItem.user_id==user.id))).all()
-    stock={(p.ingredient_name.lower(),p.unit):p.quantity for p in pantry}
     stores=[s for s in (await session.scalars(select(LocalStore))).all() if distance_km(lat,lon,s.lat,s.lon)<=radius_km]
     ingredient_rows=[]
-    for needed in recipe.ingredients:
-        pantry_qty=stock.get((needed.ingredient_name.lower(),needed.unit),0); missing=max(0,needed.required_qty-pantry_qty); options=[]
+    coverage = await recipe_coverage(session, recipe.ingredients, pantry)
+    for needed, coverage_row in zip(recipe.ingredients, coverage):
+        missing=coverage_row["missing_quantity"]; options=[]
         if missing>0:
             for store in stores:
                 price=await session.scalar(select(StorePrice).where(StorePrice.store_id==store.id,StorePrice.ingredient_name==needed.ingredient_name.lower(),StorePrice.unit==needed.unit))
@@ -36,7 +37,7 @@ async def recipe_sourcing(recipe_id: int, radius_km: float=Query(10,gt=0,le=50),
                 fallback=fallback_option(needed.ingredient_name,missing,needed.unit)
                 options=[{"store_id":-1,"store_name":fallback["store_name"],"address":fallback["address"],"distance_km":1.2,"package_size":missing,"package_unit":needed.unit,"packages_needed":1,"price_per_package_usd":fallback["estimated_cost"],"extended_price_usd":fallback["estimated_cost"],"extended_price_local":round(fallback["estimated_cost"]*rate,2),"in_stock":True,"navigation_url":f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"}]
             options.sort(key=lambda x:(not x["in_stock"],x["extended_price_usd"],x["distance_km"]))
-        ingredient_rows.append({"ingredient_name":needed.ingredient_name,"required_quantity":needed.required_qty,"pantry_quantity":min(pantry_qty,needed.required_qty),"missing_quantity":round(missing,2),"unit":needed.unit,"store_options":options})
+        ingredient_rows.append({**coverage_row, "store_options":options})
     missing_rows=[row for row in ingredient_rows if row["missing_quantity"]>0]
     store_ids={option["store_id"] for row in missing_rows for option in row["store_options"] if option["in_stock"]}
     single_candidates=[]

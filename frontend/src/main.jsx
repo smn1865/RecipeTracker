@@ -4,6 +4,7 @@ import { SourcingPanel } from "./components/SourcingPanel";
 import { WeeklyPlanner } from "./pages/WeeklyPlanner";
 import { GlobalSearch } from "./components/GlobalSearch";
 import { RecipeCard } from "./components/RecipeCard";
+import { Pantry } from "./pages/Pantry";
 import "./styles.css";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000",
   FALLBACK = { lat: 40.1872, lon: 44.5152 };
@@ -1306,6 +1307,7 @@ ExplorerDashboard = function ({ token, setToken }) {
           </div>
         )}
         {plan && <SourcingPanel recipeId={plan.recipe_id} plan={plan} formatPrice={formatPrice} headers={h} apiUrl={API} />}
+        <div className="mt-8"><Pantry headers={h} apiUrl={API} /></div>
         <div className="mt-8"><WeeklyPlanner recipes={recipes} formatPrice={formatPrice} headers={h} apiUrl={API} /></div>
       </div>
     </main>

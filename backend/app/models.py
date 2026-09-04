@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import Date, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -33,6 +33,7 @@ class PantryItem(Base):
     __tablename__ = "pantry_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredients.id"), nullable=True, index=True)
     ingredient_name: Mapped[str] = mapped_column(String(120), index=True)
     quantity: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(32))
@@ -117,3 +118,5 @@ class WeeklyMealAssignment(Base):
     day: Mapped[str] = mapped_column(String(12))
     slot: Mapped[str] = mapped_column(String(16))
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
+    eaten: Mapped[bool] = mapped_column(Boolean, default=False)
+    eaten_at: Mapped[datetime | None] = mapped_column(nullable=True)

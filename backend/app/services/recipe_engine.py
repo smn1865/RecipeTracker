@@ -3,10 +3,26 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import PantryItem, Recipe, RecipeIngredient, User
 from .location import options_for_ingredient, user_coordinates
+from .recipe_matcher import convert_quantity
 
 def missing_for_recipe(recipe: Recipe, pantry: list[PantryItem]):
-    stock = {(p.ingredient_name.lower(), p.unit): p.quantity for p in pantry}
-    return [i for i in recipe.ingredients if stock.get((i.ingredient_name.lower(), i.unit), 0) < i.required_qty]
+    missing = []
+    for ingredient in recipe.ingredients:
+        available = 0.0
+        for item in pantry:
+            if item.ingredient_name.lower() != ingredient.ingredient_name.lower():
+                continue
+            converted = convert_quantity(item.quantity, item.unit, ingredient.unit)
+            if converted is not None:
+                available += converted
+        shortage = max(0.0, ingredient.required_qty - available)
+        if shortage > 1e-9:
+            missing.append(RecipeIngredient(
+                ingredient_name=ingredient.ingredient_name,
+                required_qty=round(shortage, 3),
+                unit=ingredient.unit,
+            ))
+    return missing
 
 async def shopping_plan(session: AsyncSession, user: User, recipe: Recipe, pantry: list[PantryItem], radius_km: float = 5):
     missing = missing_for_recipe(recipe, pantry)

@@ -11,7 +11,11 @@ export function WeeklyPlanner({
   const [selected, setSelected] = useState({}),
     [budget, setBudget] = useState(50),
     [result, setResult] = useState(null),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [consumeMeal, setConsumeMeal] = useState(null),
+    [useDefault, setUseDefault] = useState(true),
+    [usage, setUsage] = useState([]),
+    [consumeError, setConsumeError] = useState("");
   useEffect(() => {
     const add = (e) =>
       setSelected((current) => ({
@@ -60,6 +64,50 @@ export function WeeklyPlanner({
       setResult({ ...data, total_cost_usd: data.total_cost });
       onShoppingList?.(data);
     }
+  }
+  async function openConsumption(meal) {
+    setConsumeError("");
+    setUseDefault(true);
+    const response = await fetch(`${apiUrl}/api/recipes/${meal.recipe_id}/sourcing`, { headers });
+    const sourcing = response.ok ? await response.json() : { ingredients: [] };
+    setUsage(
+      (sourcing.ingredients || [])
+        .filter((item) => item.ingredient_id)
+        .map((item) => ({
+          ingredient_id: item.ingredient_id,
+          ingredient_name: item.ingredient_name,
+          used_amount: item.required_quantity,
+          unit: item.unit,
+        })),
+    );
+    setConsumeMeal(meal);
+  }
+  async function confirmConsumption() {
+    setBusy(true);
+    const response = await fetch(`${apiUrl}/api/planner/meals/${consumeMeal.meal_id}/consume`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        used_default_quantities: useDefault,
+        custom_ingredient_usage: useDefault
+          ? []
+          : usage.map(({ ingredient_id, used_amount, unit }) => ({ ingredient_id, used_amount: +used_amount, unit })),
+      }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setConsumeError(data.detail || "Could not update pantry stock.");
+      setBusy(false);
+      return;
+    }
+    const data = await response.json();
+    setResult((current) => ({
+      ...current,
+      meals: current.meals.map((meal) => meal.meal_id === data.meal_id ? { ...meal, eaten: true, eaten_at: data.eaten_at } : meal),
+    }));
+    dispatchEvent(new CustomEvent("pantry:refresh"));
+    setConsumeMeal(null);
+    setBusy(false);
   }
   const total = result?.total_cost_usd ?? result?.total_cost ?? 0,
     progress = Math.min(100, (total / budget) * 100);
@@ -142,10 +190,10 @@ export function WeeklyPlanner({
             <div className="grid gap-3">
               {SLOTS.map((slot) => {
                 const key = `${day}-${slot}`,
-                  recipe = byId[selected[key]],
                   autoMeal = result?.meals?.find(
                     (m) => m.day === day && m.slot === slot,
                   ),
+                  recipe = byId[selected[key]] || autoMeal,
                   cost =
                     autoMeal?.estimated_cost_usd ??
                     recipe?.estimated_missing_cost ??
@@ -153,7 +201,7 @@ export function WeeklyPlanner({
                 return (
                   <div
                     key={slot}
-                    className="min-h-32 rounded-xl bg-white p-3 shadow-sm"
+                    className={`min-h-32 rounded-xl p-3 shadow-sm ${autoMeal?.eaten ? "bg-mint/70 ring-1 ring-emerald-400" : "bg-white"}`}
                   >
                     <span className="text-[10px] font-bold uppercase text-sage">
                       {slot}
@@ -167,6 +215,13 @@ export function WeeklyPlanner({
                           {formatPrice(cost)}
                         </span>
                         <div className="mt-2 flex gap-2 text-[10px] font-bold">
+                          {autoMeal?.eaten ? (
+                            <span className="text-emerald-700">✓ Eaten</span>
+                          ) : autoMeal?.meal_id ? (
+                            <button onClick={() => openConsumption(autoMeal)} className="rounded-full bg-forest px-2 py-1 text-white">
+                              Mark as Eaten
+                            </button>
+                          ) : null}
                           <button
                             onClick={() =>
                               setSelected({ ...selected, [key]: "" })
@@ -230,6 +285,50 @@ export function WeeklyPlanner({
           Generate Weekly Shopping List →
         </button>
       </div>
+      {consumeMeal && (
+        <div className="fixed inset-0 z-50 overflow-auto bg-forest/50 p-4 backdrop-blur-sm">
+          <section className="mx-auto my-16 max-w-xl rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-sage">UPDATE PANTRY AFTER MEAL</p>
+                <h3 className="mt-1 text-2xl font-bold text-forest">Did you use standard recipe portions?</h3>
+                <p className="mt-1 text-sm text-ink/55">{consumeMeal.title}</p>
+              </div>
+              <button onClick={() => setConsumeMeal(null)} className="text-2xl">×</button>
+            </div>
+            <div className="mt-5 grid grid-cols-2 rounded-xl bg-cream p-1 text-sm font-bold">
+              <button onClick={() => setUseDefault(true)} className={useDefault ? "rounded-lg bg-forest px-3 py-3 text-white" : "px-3 py-3"}>Yes, use defaults</button>
+              <button onClick={() => setUseDefault(false)} className={!useDefault ? "rounded-lg bg-forest px-3 py-3 text-white" : "px-3 py-3"}>No, adjust amounts</button>
+            </div>
+            {!useDefault && (
+              <div className="mt-5 max-h-72 space-y-2 overflow-auto">
+                {usage.map((item, index) => (
+                  <label key={item.ingredient_id} className="grid grid-cols-[1fr_100px_60px] items-center gap-2 rounded-xl bg-cream p-3 text-sm">
+                    <span className="capitalize font-bold">{item.ingredient_name}</span>
+                    <input
+                      type="number"
+                      min="0.001"
+                      step="any"
+                      value={item.used_amount}
+                      onChange={(event) => setUsage((current) => current.map((entry, i) => i === index ? { ...entry, used_amount: event.target.value } : entry))}
+                      className="min-w-0 rounded-lg border border-forest/10 bg-white px-2 py-2"
+                    />
+                    <span>{item.unit}</span>
+                  </label>
+                ))}
+                {!usage.length && <p className="text-sm text-red-600">No canonical ingredients are available for custom deduction.</p>}
+              </div>
+            )}
+            {consumeError && <p className="mt-3 text-sm font-semibold text-red-600">{consumeError}</p>}
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setConsumeMeal(null)} className="rounded-xl bg-cream px-4 py-3 font-bold">Cancel</button>
+              <button disabled={busy || (!useDefault && !usage.length)} onClick={confirmConsumption} className="rounded-xl bg-lime px-5 py-3 font-bold text-forest disabled:opacity-40">
+                {busy ? "Updating…" : "Confirm & deduct stock"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
