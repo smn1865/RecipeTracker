@@ -33,8 +33,9 @@ A full-stack, location-aware pantry management and recipe sourcing application b
 
 ### Complete Installation Walkthrough
 
+```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+git clone [https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git)
 cd YOUR_REPO_NAME
 
 # 2. Setup & start Backend (Terminal 1)
@@ -48,9 +49,4 @@ uvicorn app.main:app --reload   # Server starts at http://localhost:8000
 # 3. Setup & start Frontend (Terminal 2)
 cd ../frontend
 npm install
-npm run dev                     # App starts at http://localhost:5173
-
-# 3. Setup & start Frontend (Terminal 2)
-cd ../frontend
-npm install
-npm run dev                     # App starts at http://localhost:5173
+npm run dev                     # App starts at http://localhost:5173st:5173
