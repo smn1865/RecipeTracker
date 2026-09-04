@@ -1,0 +1,26 @@
+# Environment & Secrets (CRITICAL)
+.env
+*.env
+.env.local
+
+# Virtual Environment & Databases
+.venv/
+venv/
+*.db
+*.sqlite3
+
+# Python Caches (Catches all subdirectories)
+**/__pycache__/
+*.py[cod]
+
+# Frontend Dependencies & Builds
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+
+# OS & Editor Settings
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
