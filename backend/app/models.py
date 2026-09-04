@@ -62,6 +62,16 @@ class RecipeIngredient(Base):
     unit: Mapped[str] = mapped_column(String(32))
     recipe: Mapped[Recipe] = relationship(back_populates="ingredients")
 
+class Ingredient(Base):
+    __tablename__ = "ingredients"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    calories_per_100g: Mapped[float] = mapped_column(Float, default=0)
+    protein_g_per_100g: Mapped[float] = mapped_column(Float, default=0)
+    fat_g_per_100g: Mapped[float] = mapped_column(Float, default=0)
+    carbs_g_per_100g: Mapped[float] = mapped_column(Float, default=0)
+    fiber_g_per_100g: Mapped[float] = mapped_column(Float, default=0)
+
 class LocalStore(Base):
     __tablename__ = "local_stores"
     id: Mapped[int] = mapped_column(primary_key=True)

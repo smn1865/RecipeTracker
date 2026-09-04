@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from .models import LocalStore, Recipe, RecipeIngredient, StorePrice
+from .models import Ingredient, LocalStore, Recipe, RecipeIngredient, StoreInventoryItem, StorePrice
 
 RECIPES = [
  ("Berry Yogurt Oats", "Stir oats into yogurt and top with banana.", 5, 410, 26, 58, 9, "Breakfast", "High Protein,Quick & Easy,Budget Friendly", [("oats",70,"g"),("greek yogurt",200,"g"),("banana",120,"g")]),
@@ -43,4 +43,23 @@ async def seed(session: AsyncSession):
         recipe=Recipe(title=title,instructions=ins,prep_time=prep,calories=cal,protein_g=p,carbs_g=c,fat_g=f,meal_type=meal,tags=tags)
         session.add(recipe); await session.flush()
         session.add_all([RecipeIngredient(recipe_id=recipe.id,ingredient_name=n,required_qty=q,unit=u) for n,q,u in ingredients])
+    nutrition={
+      "chicken breast":(165,31,3.6,0,0),"brown rice":(123,2.7,1,25.6,1.6),"broccoli":(34,2.8,.4,7,2.6),"egg":(143,13,9.5,.7,0),
+      "oats":(389,16.9,6.9,66.3,10.6),"greek yogurt":(59,10.3,.4,3.6,0),"banana":(89,1.1,.3,22.8,2.6),"salmon":(208,20,13,0,0),
+      "tofu":(144,17,8.7,2.8,2.3),"lentils":(116,9,.4,20,7.9),"tuna":(132,28,1.3,0,0),"tomato":(18,.9,.2,3.9,1.2),
+      "spinach":(23,2.9,.4,3.6,2.2),"chickpeas":(164,8.9,2.6,27.4,7.6),"bread":(265,9,3.2,49,2.7),"apple":(52,.3,.2,13.8,2.4)
+    }
+    existing_ingredients=set((await session.scalars(select(Ingredient.name))).all())
+    all_names={n for recipe in RECIPES for n,_,_ in recipe[-1]}
+    for name in all_names-existing_ingredients:
+        cal,p,f,c,fiber=nutrition.get(name,(100,3,2,15,2))
+        session.add(Ingredient(name=name,calories_per_100g=cal,protein_g_per_100g=p,fat_g_per_100g=f,carbs_g_per_100g=c,fiber_g_per_100g=fiber))
+    await session.flush()
+    existing_inventory={(i.store_id,i.ingredient_name) for i in (await session.scalars(select(StoreInventoryItem))).all()}
+    for store in stores:
+        for name,base in prices.items():
+            if (store.id,name) not in existing_inventory:
+                unit="each" if name=="egg" else "g"
+                size=12 if unit=="each" else 500
+                session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=size,unit=unit,price_usd=round(base*size,2),in_stock=True))
     await session.commit()

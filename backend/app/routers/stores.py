@@ -33,7 +33,7 @@ async def report_stock(item_id: int, payload: StockReport, user: User = Depends(
         session.add(StoreItemReport(item_id=item_id, user_id=user.id, report_type="stock"))
         await session.flush()
         count = await session.scalar(select(func.count()).select_from(StoreItemReport).where(StoreItemReport.item_id==item_id, StoreItemReport.report_type=="stock", StoreItemReport.created_at >= datetime.utcnow()-timedelta(hours=24)))
-        item.in_stock = count >= 2
+        item.in_stock = count < 2
     await session.commit(); await session.refresh(item)
     _, _, rate = get_currency_for_coords(user.lat, user.lon); usd, local = normalized_price(item, rate)
     return {"id":item.id,"ingredient_name":item.ingredient_name,"package_size":item.package_size,"unit":item.unit,"price_usd":item.price_usd,"unit_price_usd":usd,"unit_price_local":local,"in_stock":item.in_stock}

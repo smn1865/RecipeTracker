@@ -188,3 +188,85 @@ class ConsolidateResponse(BaseModel):
     exceeds_budget: bool
     missing_ingredients: list[IngredientNeed]
     swap_suggestions: list[str]
+
+class AutoGenerateRequest(BaseModel):
+    weekly_budget: float | None = Field(default=None, gt=0)
+
+class PlannedMeal(BaseModel):
+    day: str
+    slot: str
+    recipe_id: int
+    title: str
+    estimated_cost_usd: float
+    calories: int
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+
+class AggregatedIngredient(BaseModel):
+    ingredient_name: str
+    quantity: float
+    unit: str
+    estimated_cost_usd: float
+
+class AutoGenerateResponse(BaseModel):
+    meals: list[PlannedMeal]
+    total_cost_usd: float
+    total_cost_local: float
+    local_currency: str
+    local_currency_symbol: str
+    usd_to_local_rate: float
+    saved_via_overlap_usd: float
+    ingredients: list[AggregatedIngredient]
+    total_calories: int
+    total_protein_g: float
+    total_carbs_g: float
+    total_fat_g: float
+    weekly_budget: float | None
+    exceeds_budget: bool
+
+class IngredientNutrition(BaseModel):
+    id: int
+    name: str
+    calories_per_100g: float
+    protein_g_per_100g: float
+    fat_g_per_100g: float
+    carbs_g_per_100g: float
+    fiber_g_per_100g: float
+
+class IngredientStoreOption(BaseModel):
+    store_id: int
+    store_name: str
+    address: str
+    distance_km: float
+    price_usd: float
+    price_local: float
+    unit: str
+    in_stock: bool
+    navigation_url: str
+
+class IngredientStoresResponse(BaseModel):
+    ingredient: IngredientNutrition
+    suggested_recipe_id: int | None = None
+    suggested_recipe_title: str | None = None
+    local_currency: str
+    local_currency_symbol: str
+    usd_to_local_rate: float
+    stores: list[IngredientStoreOption]
+
+class SearchDishResult(BaseModel):
+    id: int
+    title: str
+    meal_type: str
+    estimated_cost_usd: float
+    calories: int
+
+class SearchIngredientResult(BaseModel):
+    id: int
+    name: str
+    estimated_cost_usd: float
+    unit: str
+
+class UnifiedSearchResponse(BaseModel):
+    dishes: list[SearchDishResult]
+    ingredients: list[SearchIngredientResult]

@@ -140,5 +140,9 @@ async def optimize_sourcing(payload: OptimizeRequest, user: User = Depends(curre
 
 from .routers.stores import router as stores_router
 from .routers.planner import router as planner_router
+from .routers.ingredients import router as ingredients_router
+from .routers.search import router as search_router
 app.include_router(stores_router)
 app.include_router(planner_router)
+app.include_router(ingredients_router)
+app.include_router(search_router)

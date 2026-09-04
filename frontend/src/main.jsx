@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from "r
 import { createRoot } from "react-dom/client";
 import { SourcingPanel } from "./components/SourcingPanel";
 import { WeeklyPlanner } from "./pages/WeeklyPlanner";
+import { GlobalSearch } from "./components/GlobalSearch";
 import "./styles.css";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000",
   FALLBACK = { lat: 40.1872, lon: 44.5152 };
@@ -1228,6 +1229,7 @@ ExplorerDashboard = function ({ token, setToken }) {
     <main className="min-h-screen">
       <nav className="mx-auto flex max-w-7xl justify-between px-6 py-5">
         <Logo />
+        <GlobalSearch headers={h} apiUrl={API} formatPrice={formatPrice} />
         <div className="flex items-center gap-2">
           <CurrencySwitcher />
           <button
