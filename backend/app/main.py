@@ -53,6 +53,18 @@ async def lifespan(app: FastAPI):
             await connection.exec_driver_sql("ALTER TABLE weekly_meal_assignments ADD COLUMN eaten BOOLEAN DEFAULT 0")
         if "eaten_at" not in meal_columns:
             await connection.exec_driver_sql("ALTER TABLE weekly_meal_assignments ADD COLUMN eaten_at DATETIME")
+        ingredient_columns = {row[1] for row in (await connection.exec_driver_sql("PRAGMA table_info(ingredients)")).all()}
+        for column, sql_type in {"category": "VARCHAR(80) DEFAULT 'uncategorized'", "barcode": "VARCHAR(64)", "package_size": "FLOAT", "package_unit": "VARCHAR(12)"}.items():
+            if column not in ingredient_columns:
+                await connection.exec_driver_sql(f"ALTER TABLE ingredients ADD COLUMN {column} {sql_type}")
+        await connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_ingredients_category ON ingredients (category)")
+        await connection.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ix_ingredients_barcode ON ingredients (barcode)")
+        store_price_columns = {row[1] for row in (await connection.exec_driver_sql("PRAGMA table_info(store_prices)")).all()}
+        if "price_amd_per_unit" not in store_price_columns:
+            await connection.exec_driver_sql("ALTER TABLE store_prices ADD COLUMN price_amd_per_unit FLOAT DEFAULT 0")
+        inventory_columns = {row[1] for row in (await connection.exec_driver_sql("PRAGMA table_info(store_inventory_items)")).all()}
+        if "price_amd" not in inventory_columns:
+            await connection.exec_driver_sql("ALTER TABLE store_inventory_items ADD COLUMN price_amd FLOAT DEFAULT 0")
     async with SessionLocal() as session: await seed(session)
     yield
 

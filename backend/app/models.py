@@ -72,6 +72,10 @@ class Ingredient(Base):
     __tablename__ = "ingredients"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    category: Mapped[str] = mapped_column(String(80), default="uncategorized", index=True)
+    barcode: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    package_size: Mapped[float | None] = mapped_column(Float, nullable=True)
+    package_unit: Mapped[str | None] = mapped_column(String(12), nullable=True)
     calories_per_100g: Mapped[float] = mapped_column(Float, default=0)
     protein_g_per_100g: Mapped[float] = mapped_column(Float, default=0)
     fat_g_per_100g: Mapped[float] = mapped_column(Float, default=0)
@@ -94,6 +98,7 @@ class StorePrice(Base):
     store_id: Mapped[int] = mapped_column(ForeignKey("local_stores.id"), index=True)
     ingredient_name: Mapped[str] = mapped_column(String(120), index=True)
     price_per_unit: Mapped[float] = mapped_column(Float)
+    price_amd_per_unit: Mapped[float] = mapped_column(Float, default=0)
     unit: Mapped[str] = mapped_column(String(32))
     store: Mapped[LocalStore] = relationship(back_populates="prices")
 
@@ -105,6 +110,7 @@ class StoreInventoryItem(Base):
     package_size: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(12))
     price_usd: Mapped[float] = mapped_column(Float)
+    price_amd: Mapped[float] = mapped_column(Float, default=0)
     in_stock: Mapped[bool] = mapped_column(default=True)
 
 class StoreItemReport(Base):

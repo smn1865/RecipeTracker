@@ -81,11 +81,11 @@ async def seed(session: AsyncSession):
             factor=[.86,.94,1.0,1.07,1.14][(index-rotation)%5]
             unit_price=round(base*factor,4)
             price_key=(store.id,name,unit)
-            if price_key in prices: prices[price_key].price_per_unit=unit_price
-            else: session.add(StorePrice(store_id=store.id,ingredient_name=name,price_per_unit=unit_price,unit=unit))
+            if price_key in prices: prices[price_key].price_per_unit=unit_price;prices[price_key].price_amd_per_unit=round(unit_price*388,2)
+            else: session.add(StorePrice(store_id=store.id,ingredient_name=name,price_per_unit=unit_price,price_amd_per_unit=round(unit_price*388,2),unit=unit))
             inventory_key=(store.id,name,unit)
             package_price=round(unit_price*package_size,2)
             if inventory_key in inventory:
-                inventory[inventory_key].package_size=package_size;inventory[inventory_key].price_usd=package_price
-            else: session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=package_size,unit=unit,price_usd=package_price,in_stock=True))
+                inventory[inventory_key].package_size=package_size;inventory[inventory_key].price_usd=package_price;inventory[inventory_key].price_amd=round(package_price*388,2)
+            else: session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=package_size,unit=unit,price_usd=package_price,price_amd=round(package_price*388,2),in_stock=True))
     await session.commit()
