@@ -22,18 +22,31 @@ A full-stack, location-aware pantry management and recipe sourcing application b
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Setup & Local Development
 
 ### Prerequisites
 
-Ensure you have the following installed on your system:
 - [Python 3.10+](https://www.python.org/)
 - [Node.js 18+](https://nodejs.org/) & `npm`
 
 ---
 
-### 1. Clone the Repository
+### Complete Installation Walkthrough
 
 ```bash
+# 1. Clone the repository
 git clone [https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git)
 cd YOUR_REPO_NAME
+
+# 2. Setup & start Backend (Terminal 1)
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate       # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+echo "SECRET_KEY=dev_secret_key" > .env
+uvicorn app.main:app --reload   # Server starts at http://localhost:8000
+
+# 3. Setup & start Frontend (Terminal 2)
+cd ../frontend
+npm install
+npm run dev                     # App starts at http://localhost:5173
