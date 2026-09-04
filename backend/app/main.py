@@ -9,12 +9,13 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from .database import Base, engine, get_session, SessionLocal
 from .models import PantryItem, Recipe, User
-from .schemas import AuthResponse, GeocodeRequest, GeocodeResult, LoginRequest, NutritionProfile, PantryCreate, PantryOut, ProfileUpdate, RecipeFilters, RecipeSuggestion, RegisterRequest, SourcingPlanResponse, UserProfile
+from .schemas import AuthResponse, GeocodeRequest, GeocodeResult, LoginRequest, NutritionProfile, OptimizeRequest, OptimizeResponse, PantryCreate, PantryOut, ProfileUpdate, RecipeFilters, RecipeSuggestion, RegisterRequest, SourcingPlanResponse, UserProfile
 from .seed import seed
 from .services.health import activity_from_assessment, bmi_status, calculate_bmi, nutrition_targets
 from .services.geocoding import geocode_address
 from .services.recipe_engine import shopping_plan, smart_suggestions
 from .services.location import get_currency_for_coords
+from .services.optimizer import optimize_basket
 
 SECRET = "replace-me-with-an-environment-secret"
 password_hash = PasswordHash.recommended()
@@ -128,3 +129,16 @@ async def sourcing(recipe_id: int = Query(gt=0), radius_km: float = Query(5, gt=
     currency, symbol, rate = get_currency_for_coords(getattr(user, "lat", None), getattr(user, "lon", None))
     return {"recipe_id": recipe.id, "recipe_title": recipe.title, "items": items, "total_cost": total,
             "local_currency": currency, "local_currency_symbol": symbol, "usd_to_local_rate": rate}
+
+@app.post("/api/sourcing/optimize", response_model=OptimizeResponse)
+async def optimize_sourcing(payload: OptimizeRequest, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    recipe = await session.get(Recipe, payload.recipe_id, options=[selectinload(Recipe.ingredients)])
+    if not recipe: raise HTTPException(404, "Recipe not found")
+    pantry = (await session.scalars(select(PantryItem).where(PantryItem.user_id == user.id))).all()
+    from .services.recipe_engine import missing_for_recipe
+    return await optimize_basket(session, missing_for_recipe(recipe, pantry), user.lat, user.lon, payload.distance_penalty, payload.max_stores)
+
+from .routers.stores import router as stores_router
+from .routers.planner import router as planner_router
+app.include_router(stores_router)
+app.include_router(planner_router)

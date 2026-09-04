@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy import Date, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
@@ -80,3 +80,30 @@ class StorePrice(Base):
     price_per_unit: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(32))
     store: Mapped[LocalStore] = relationship(back_populates="prices")
+
+class StoreInventoryItem(Base):
+    __tablename__ = "store_inventory_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("local_stores.id"), index=True)
+    ingredient_name: Mapped[str] = mapped_column(String(120), index=True)
+    package_size: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(12))
+    price_usd: Mapped[float] = mapped_column(Float)
+    in_stock: Mapped[bool] = mapped_column(default=True)
+
+class StoreItemReport(Base):
+    __tablename__ = "store_item_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("store_inventory_items.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    report_type: Mapped[str] = mapped_column(String(16))
+    reported_price_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+class WeeklyMealAssignment(Base):
+    __tablename__ = "weekly_meal_assignments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    day: Mapped[str] = mapped_column(String(12))
+    slot: Mapped[str] = mapped_column(String(16))
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))

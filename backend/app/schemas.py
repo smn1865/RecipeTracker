@@ -136,3 +136,55 @@ class SourcingPlanResponse(ShoppingPlan):
     local_currency: str
     local_currency_symbol: str
     usd_to_local_rate: float
+
+class OptimizeRequest(BaseModel):
+    recipe_id: int = Field(gt=0)
+    distance_penalty: float = Field(default=.15, ge=0, le=10)
+    max_stores: int = Field(default=3, ge=1, le=3)
+
+class StoreAssignment(BaseModel):
+    store_name: str
+    address: str
+    distance_km: float
+    items: list[IngredientNeed]
+    item_cost: float
+
+class OptimizeResponse(BaseModel):
+    single_store_total: float
+    optimized_total: float
+    travel_distance_km: float
+    net_savings: float
+    uses_multi_store: bool
+    assignments: list[StoreAssignment]
+
+class PriceReport(BaseModel):
+    price_usd: float = Field(gt=0)
+
+class StockReport(BaseModel):
+    out_of_stock: bool = True
+
+class InventoryItemOut(BaseModel):
+    id: int
+    ingredient_name: str
+    package_size: float
+    unit: str
+    price_usd: float
+    unit_price_usd: float
+    unit_price_local: float
+    in_stock: bool
+
+class MealAssignmentIn(BaseModel):
+    day: str
+    slot: str
+    recipe_id: int
+
+class ConsolidateRequest(BaseModel):
+    assignments: list[MealAssignmentIn]
+    weekly_budget: float = Field(gt=0)
+
+class ConsolidateResponse(BaseModel):
+    total_cost: float
+    weekly_budget: float
+    exceeds_budget: bool
+    missing_ingredients: list[IngredientNeed]
+    swap_suggestions: list[str]
