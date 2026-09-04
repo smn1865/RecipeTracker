@@ -112,7 +112,9 @@ async def pantry(user: User = Depends(current_user), session: AsyncSession = Dep
 
 @app.post("/pantry", response_model=PantryOut, status_code=201)
 async def add_pantry_item(payload: PantryCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
-    item = PantryItem(**payload.model_dump(), user_id=user.id, ingredient_name=payload.ingredient_name.lower())
+    values = payload.model_dump()
+    values["ingredient_name"] = payload.ingredient_name.lower()
+    item = PantryItem(**values, user_id=user.id)
     session.add(item); await session.commit(); await session.refresh(item); return item
 
 @app.post("/recipes/generate-smart", response_model=list[RecipeSuggestion])
@@ -142,7 +144,9 @@ from .routers.stores import router as stores_router
 from .routers.planner import router as planner_router
 from .routers.ingredients import router as ingredients_router
 from .routers.search import router as search_router
+from .routers.recipes import router as recipes_router
 app.include_router(stores_router)
 app.include_router(planner_router)
 app.include_router(ingredients_router)
 app.include_router(search_router)
+app.include_router(recipes_router)

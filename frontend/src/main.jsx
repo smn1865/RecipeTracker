@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { SourcingPanel } from "./components/SourcingPanel";
 import { WeeklyPlanner } from "./pages/WeeklyPlanner";
 import { GlobalSearch } from "./components/GlobalSearch";
+import { RecipeCard } from "./components/RecipeCard";
 import "./styles.css";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000",
   FALLBACK = { lat: 40.1872, lon: 44.5152 };
@@ -1294,22 +1295,7 @@ ExplorerDashboard = function ({ token, setToken }) {
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {recipes.slice(0, shown).map((r) => (
-            <article key={r.id} className="rounded-3xl bg-white p-5 shadow-sm">
-              <span className="rounded-full bg-mint px-3 py-1 text-xs font-bold text-forest">
-                {r.meal_type} · {r.pantry_match_percent}% pantry
-              </span>
-              <h2 className="mt-4 text-xl font-bold">{r.title}</h2>
-              <p className="mt-2 text-sm text-ink/60">
-                ◷ {r.prep_time} min · P {r.protein_g}g · C {r.carbs_g}g · F{" "}
-                {r.fat_g}g
-              </p>
-              <div className="mt-4 flex justify-between">
-                <b className="text-forest">
-                  {formatPrice(r.estimated_missing_cost)}
-                </b>
-                <Btn onClick={() => source(r.id)}>Source</Btn>
-              </div>
-            </article>
+            <RecipeCard key={r.id} recipe={r} headers={h} apiUrl={API} formatPrice={formatPrice} />
           ))}
         </div>
         {shown < recipes.length && (

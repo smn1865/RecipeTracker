@@ -270,3 +270,62 @@ class SearchIngredientResult(BaseModel):
 class UnifiedSearchResponse(BaseModel):
     dishes: list[SearchDishResult]
     ingredients: list[SearchIngredientResult]
+
+class RecipeIngredientStorePrice(BaseModel):
+    store_id: int
+    store_name: str
+    address: str
+    distance_km: float
+    package_size: float
+    package_unit: str
+    packages_needed: int
+    price_per_package_usd: float
+    extended_price_usd: float
+    extended_price_local: float
+    in_stock: bool
+    navigation_url: str
+
+class RecipeIngredientSourcing(BaseModel):
+    ingredient_name: str
+    required_quantity: float
+    pantry_quantity: float
+    missing_quantity: float
+    unit: str
+    store_options: list[RecipeIngredientStorePrice]
+
+class MealStoreChoice(BaseModel):
+    store_id: int
+    store_name: str
+    address: str
+    distance_km: float
+    item_total_usd: float
+    total_with_travel_usd: float
+    navigation_url: str
+
+class MealSplitStore(BaseModel):
+    store_id: int
+    store_name: str
+    address: str
+    distance_km: float
+    item_total_usd: float
+    navigation_url: str
+    ingredients: list[str]
+
+class MealMultiStoreChoice(BaseModel):
+    stores: list[MealSplitStore]
+    item_total_usd: float
+    travel_penalty_usd: float
+    total_with_travel_usd: float
+    savings_vs_single_usd: float
+
+class RecipeSourcingResponse(BaseModel):
+    recipe_id: int
+    recipe_title: str
+    ingredients: list[RecipeIngredientSourcing]
+    total_estimated_cost_usd: float
+    total_estimated_cost_local: float
+    local_currency: str
+    local_currency_symbol: str
+    usd_to_local_rate: float
+    best_single_store: MealStoreChoice | None
+    multi_store_split: MealMultiStoreChoice | None
