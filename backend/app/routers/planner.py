@@ -10,6 +10,7 @@ from ..schemas import AutoGenerateRequest, AutoGenerateResponse, ConsolidateRequ
 from ..services.recipe_engine import shopping_plan
 from ..services.location import get_currency_for_coords, options_for_ingredient
 from ..services.recipe_matcher import convert_quantity
+from ..services.preferences import id_list, recipe_is_allowed
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -18,8 +19,12 @@ SLOTS = ["Breakfast", "Lunch", "Dinner"]
 @router.post("/auto-generate", response_model=AutoGenerateResponse)
 async def auto_generate(payload: AutoGenerateRequest, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     recipes = (await session.scalars(select(Recipe).options(selectinload(Recipe.ingredients)))).all()
+    ingredient_rows = (await session.scalars(select(Ingredient))).all()
+    ingredient_ids = {item.name.lower(): item.id for item in ingredient_rows}
+    excluded = set(id_list(user.excluded_ingredient_ids))
+    recipes = [recipe for recipe in recipes if recipe_is_allowed(recipe, excluded, ingredient_ids)]
     pantry = (await session.scalars(select(PantryItem).where(PantryItem.user_id==user.id))).all()
-    if not recipes: raise HTTPException(409, "Recipe catalog is empty")
+    if not recipes: raise HTTPException(409, "No recipes remain after applying your excluded ingredients")
     recipe_costs = {}
     for recipe in recipes:
         _, recipe_costs[recipe.id] = await shopping_plan(session, user, recipe, pantry)

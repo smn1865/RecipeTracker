@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+import json
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .database import Base, engine, get_session, SessionLocal
 from .models import PantryItem, Recipe, User
 from .schemas import AuthResponse, GeocodeRequest, GeocodeResult, LoginRequest, NutritionProfile, OptimizeRequest, OptimizeResponse, PantryCreate, PantryOut, ProfileUpdate, RecipeFilters, RecipeSuggestion, RegisterRequest, SourcingPlanResponse, UserProfile
-from .seed import seed
+from .db.seed import seed
 from .services.health import activity_from_assessment, bmi_status, calculate_bmi, nutrition_targets
 from .services.geocoding import geocode_address
 from .services.recipe_engine import shopping_plan, smart_suggestions
@@ -34,6 +35,16 @@ async def lifespan(app: FastAPI):
         recipe_columns = {row[1] for row in recipes}
         for column, sql_type in {"meal_type": "VARCHAR(32) DEFAULT 'Lunch'", "tags": "VARCHAR(255) DEFAULT 'Quick & Easy'"}.items():
             if column not in recipe_columns: await connection.exec_driver_sql(f"ALTER TABLE recipes ADD COLUMN {column} {sql_type}")
+        user_profile_additions = {
+            "health_goal": "VARCHAR(32) DEFAULT 'maintenance'",
+            "target_calories": "INTEGER DEFAULT 0",
+            "macro_preference": "VARCHAR(32) DEFAULT 'balanced'",
+            "favorite_meal_ids": "TEXT DEFAULT '[]'",
+            "excluded_ingredient_ids": "TEXT DEFAULT '[]'",
+        }
+        for column, sql_type in user_profile_additions.items():
+            if column not in names:
+                await connection.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {column} {sql_type}")
         pantry_columns = {row[1] for row in (await connection.exec_driver_sql("PRAGMA table_info(pantry_items)")).all()}
         if "ingredient_id" not in pantry_columns:
             await connection.exec_driver_sql("ALTER TABLE pantry_items ADD COLUMN ingredient_id INTEGER")
@@ -55,8 +66,17 @@ def refresh_health_baseline(user: User):
     user.activity_level, _ = activity_from_assessment(user.daily_routine, user.exercise_frequency, user.exercise_intensity, user.daily_movement)
     targets = nutrition_targets(user.weight_kg, user.height_cm, user.age, user.gender, user.activity_level, user.weight_goal, daily_routine=user.daily_routine, exercise_frequency=user.exercise_frequency, exercise_intensity=user.exercise_intensity, daily_movement=user.daily_movement)
     user.bmi = calculate_bmi(user.weight_kg, user.height_cm)
-    user.daily_calories = targets["daily_calories"]
-    user.protein_target_g, user.carbs_target_g, user.fat_target_g = targets["protein_g"], targets["carbs_g"], targets["fat_g"]
+    user.daily_calories = user.target_calories if getattr(user, "target_calories", 0) > 0 else targets["daily_calories"]
+    protein, carbs, fat = targets["protein_g"], targets["carbs_g"], targets["fat_g"]
+    if getattr(user, "macro_preference", "balanced") == "high_protein":
+        protein = max(protein, round(user.daily_calories * .30 / 4))
+        carbs = max(0, round((user.daily_calories - protein * 4 - fat * 9) / 4))
+    elif getattr(user, "macro_preference", "balanced") == "low_carb":
+        carbs = round(user.daily_calories * .25 / 4)
+        protein = max(protein, round(user.weight_kg * 1.8))
+        fat = max(0, round((user.daily_calories - protein * 4 - carbs * 4) / 9))
+    user.protein_target_g, user.carbs_target_g, user.fat_target_g = protein, carbs, fat
+    targets = {"daily_calories": user.daily_calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat}
     return targets
 
 async def current_user(authorization: str | None = Header(None), session: AsyncSession = Depends(get_session)):
@@ -72,6 +92,8 @@ async def register(payload: RegisterRequest, session: AsyncSession = Depends(get
     if await session.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(409, "Email already registered")
     values = payload.model_dump(exclude={"password"})
+    values["favorite_meal_ids"] = json.dumps(values["favorite_meal_ids"])
+    values["excluded_ingredient_ids"] = json.dumps(values["excluded_ingredient_ids"])
     user = User(**values, password_hash=password_hash.hash(payload.password))
     refresh_health_baseline(user)
     session.add(user); await session.commit(); await session.refresh(user)
@@ -95,12 +117,17 @@ async def get_profile(user: User = Depends(current_user)):
             "address": user.address, "lat": user.lat, "lon": user.lon, "gender": user.gender,
             "daily_routine": user.daily_routine, "exercise_frequency": user.exercise_frequency,
             "exercise_intensity": user.exercise_intensity, "daily_movement": user.daily_movement,
-            "weight_goal": user.weight_goal, "local_currency": currency,
+            "weight_goal": user.weight_goal, "health_goal": user.health_goal,
+            "target_calories": user.target_calories, "macro_preference": user.macro_preference,
+            "favorite_meal_ids": json.loads(user.favorite_meal_ids or "[]"),
+            "excluded_ingredient_ids": json.loads(user.excluded_ingredient_ids or "[]"), "local_currency": currency,
             "local_currency_symbol": symbol, "usd_to_local_rate": rate}
 
 @app.patch("/auth/profile", response_model=NutritionProfile)
 async def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     changes = payload.model_dump(exclude_unset=True)
+    for list_field in ("favorite_meal_ids", "excluded_ingredient_ids"):
+        if list_field in changes: changes[list_field] = json.dumps(changes[list_field])
     for field, value in changes.items(): setattr(user, field, value)
     if "address" in changes and "lat" not in changes and "lon" not in changes:
         point = geocode_address(user.address)
@@ -154,9 +181,11 @@ from .routers.ingredients import router as ingredients_router
 from .routers.search import router as search_router
 from .routers.recipes import router as recipes_router
 from .routers.pantry import router as pantry_router
+from .routers.auth import router as auth_router
 app.include_router(stores_router)
 app.include_router(planner_router)
 app.include_router(ingredients_router)
 app.include_router(search_router)
 app.include_router(recipes_router)
 app.include_router(pantry_router)
+app.include_router(auth_router)

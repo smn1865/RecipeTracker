@@ -120,7 +120,7 @@ export function Pantry({ headers, apiUrl = "" }) {
         </select>
         <button className="rounded-xl bg-forest px-5 py-3 font-bold text-white">Add stock</button>
       </form>
-      {error && <p className="mt-2 text-sm font-semibold text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm font-semibold text-amber-700">{error}</p>}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
@@ -130,7 +130,7 @@ export function Pantry({ headers, apiUrl = "" }) {
                 <b className="capitalize text-forest">{item.ingredient_name}</b>
                 <p className="text-xs text-ink/45">{item.expiration_date ? `Expires ${item.expiration_date}` : "No expiration date"}</p>
               </div>
-              <button onClick={() => patchItem(item.id, { remove: true })} className="text-xs font-bold text-red-600">Remove</button>
+              <button onClick={() => patchItem(item.id, { remove: true })} className="text-xs font-bold text-amber-700">Remove</button>
             </div>
             <div className="mt-3 flex gap-2">
               <input

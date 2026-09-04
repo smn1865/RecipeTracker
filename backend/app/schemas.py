@@ -19,6 +19,11 @@ class RegisterRequest(BaseModel):
     exercise_intensity: str
     daily_movement: str
     weight_goal: str = "maintenance"
+    health_goal: Literal["weight_loss", "muscle_gain", "maintenance", "budget_first"] = "maintenance"
+    target_calories: int = Field(default=0, ge=0, le=10000)
+    macro_preference: Literal["high_protein", "low_carb", "balanced"] = "balanced"
+    favorite_meal_ids: list[int] = Field(default_factory=list, min_length=3, max_length=5)
+    excluded_ingredient_ids: list[int] = Field(default_factory=list)
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -91,6 +96,11 @@ class ProfileUpdate(BaseModel):
     exercise_intensity: str | None = None
     daily_movement: str | None = None
     weight_goal: str | None = None
+    health_goal: Literal["weight_loss", "muscle_gain", "maintenance", "budget_first"] | None = None
+    target_calories: int | None = Field(None, ge=0, le=10000)
+    macro_preference: Literal["high_protein", "low_carb", "balanced"] | None = None
+    favorite_meal_ids: list[int] | None = Field(None, max_length=5)
+    excluded_ingredient_ids: list[int] | None = None
 
 class UserProfile(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -107,9 +117,30 @@ class UserProfile(BaseModel):
     exercise_intensity: str
     daily_movement: str
     weight_goal: str
+    health_goal: str
+    target_calories: int
+    macro_preference: str
+    favorite_meal_ids: list[int]
+    excluded_ingredient_ids: list[int]
     local_currency: str
     local_currency_symbol: str
     usd_to_local_rate: float
+
+class DietaryPreferencesUpdate(BaseModel):
+    health_goal: Literal["weight_loss", "muscle_gain", "maintenance", "budget_first"] | None = None
+    weight_goal: Literal["deficit", "surplus", "maintenance"] | None = None
+    target_calories: int | None = Field(None, ge=0, le=10000)
+    macro_preference: Literal["high_protein", "low_carb", "balanced"] | None = None
+    favorite_meal_ids: list[int] | None = Field(None, min_length=3, max_length=5)
+    excluded_ingredient_ids: list[int] | None = None
+
+class DietaryPreferencesResponse(BaseModel):
+    health_goal: str
+    weight_goal: str
+    target_calories: int
+    macro_preference: str
+    favorite_meal_ids: list[int]
+    excluded_ingredient_ids: list[int]
 
 class IngredientNeed(BaseModel):
     ingredient_name: str
@@ -170,6 +201,7 @@ class StoreAssignment(BaseModel):
     distance_km: float
     items: list[IngredientNeed]
     item_cost: float
+    navigation_url: str
 
 class OptimizeResponse(BaseModel):
     single_store_total: float
@@ -178,6 +210,9 @@ class OptimizeResponse(BaseModel):
     net_savings: float
     uses_multi_store: bool
     assignments: list[StoreAssignment]
+    item_cost_usd: float = 0
+    single_store_item_cost_usd: float = 0
+    ingredient_savings_usd: float = 0
 
 class PriceReport(BaseModel):
     price_usd: float = Field(gt=0)
@@ -306,6 +341,7 @@ class RecipeIngredientStorePrice(BaseModel):
     package_unit: str
     packages_needed: int
     price_per_package_usd: float
+    unit_price_usd: float
     extended_price_usd: float
     extended_price_local: float
     in_stock: bool
@@ -361,6 +397,39 @@ class MealMultiStoreChoice(BaseModel):
     total_with_travel_usd: float
     savings_vs_single_usd: float
 
+class IngredientStoreAssignment(BaseModel):
+    ingredient_name: str
+    quantity: float
+    unit: str
+    store_id: int
+    store_name: str
+    address: str
+    distance_km: float
+    unit_price_usd: float
+    package_size: float
+    package_unit: str
+    packages_needed: int
+    estimated_cost_usd: float
+    navigation_url: str
+
+class ItemizedStoreGroup(BaseModel):
+    store_id: int
+    store_name: str
+    address: str
+    distance_km: float
+    subtotal_usd: float
+    navigation_url: str
+    ingredients: list[str]
+
+class ItemizedSourcingPlan(BaseModel):
+    assignments: list[IngredientStoreAssignment]
+    stores: list[ItemizedStoreGroup]
+    ingredient_total_usd: float
+    travel_distance_km: float
+    travel_penalty_usd: float
+    total_with_travel_usd: float
+    savings_vs_single_store_usd: float
+
 class RecipeSourcingResponse(BaseModel):
     recipe_id: int
     recipe_title: str
@@ -372,3 +441,4 @@ class RecipeSourcingResponse(BaseModel):
     usd_to_local_rate: float
     best_single_store: MealStoreChoice | None
     multi_store_split: MealMultiStoreChoice | None
+    itemized_sourcing: ItemizedSourcingPlan

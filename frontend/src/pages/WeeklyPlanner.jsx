@@ -174,7 +174,7 @@ export function WeeklyPlanner({
         <div className="mt-2 h-3 overflow-hidden rounded-full bg-cream">
           <div
             className={
-              result?.exceeds_budget ? "h-full bg-red-500" : "h-full bg-forest"
+              result?.exceeds_budget ? "h-full bg-amber-500" : "h-full bg-emerald-700"
             }
             style={{ width: `${progress}%` }}
           />
@@ -226,7 +226,7 @@ export function WeeklyPlanner({
                             onClick={() =>
                               setSelected({ ...selected, [key]: "" })
                             }
-                            className="text-red-600"
+                            className="text-amber-700"
                           >
                             Remove
                           </button>
@@ -316,10 +316,10 @@ export function WeeklyPlanner({
                     <span>{item.unit}</span>
                   </label>
                 ))}
-                {!usage.length && <p className="text-sm text-red-600">No canonical ingredients are available for custom deduction.</p>}
+                {!usage.length && <p className="text-sm text-amber-700">No canonical ingredients are available for custom deduction.</p>}
               </div>
             )}
-            {consumeError && <p className="mt-3 text-sm font-semibold text-red-600">{consumeError}</p>}
+            {consumeError && <p className="mt-3 text-sm font-semibold text-amber-700">{consumeError}</p>}
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setConsumeMeal(null)} className="rounded-xl bg-cream px-4 py-3 font-bold">Cancel</button>
               <button disabled={busy || (!useDefault && !usage.length)} onClick={confirmConsumption} className="rounded-xl bg-lime px-5 py-3 font-bold text-forest disabled:opacity-40">

@@ -41,19 +41,22 @@ async def optimize_basket(session: AsyncSession, ingredients: list, lat: float |
             store = LocalStore(id=-1, name=option["store_name"], address=option["address"], lat=lat, lon=lon)
             baseline_groups.setdefault(-1, []).append((ingredient, store, option["estimated_cost"]))
     baseline_total, _, _ = score(baseline_groups)
-    # Cheapest option for each ingredient, then reject if it would need too many stops.
+    # Cheapest in-stock option for every ingredient. max_stores remains accepted
+    # for API compatibility, but no longer suppresses the transparent item-level plan.
     split = defaultdict(list)
     for ingredient in ingredients:
         candidates = [entry for entries in by_store.values() for entry in entries if entry[0] is ingredient]
         split[min(candidates, key=lambda entry: entry[2])[1].id].append(min(candidates, key=lambda entry: entry[2]))
-    if len(split) > max_stores:
-        split = baseline_groups
     split_total, travel, _ = score(split)
     use_split = len(split) > 1 and split_total < baseline_total
-    selected = split if use_split else baseline_groups
+    # Always expose the granular cheapest-store assignment. The caller can still
+    # compare its route-adjusted total with the one-store baseline.
+    selected = split
     selected_total, selected_distance, _ = score(selected)
     assignments = []
     for entries in selected.values():
         store = entries[0][1]
-        assignments.append({"store_name": store.name, "address": store.address, "distance_km": distance_km(lat, lon, store.lat, store.lon), "item_cost": round(sum(x[2] for x in entries), 2), "items": [{"ingredient_name": x[0].ingredient_name, "quantity": x[0].required_qty, "unit": x[0].unit} for x in entries]})
-    return {"single_store_total": baseline_total, "optimized_total": selected_total, "travel_distance_km": selected_distance, "net_savings": round(max(0, baseline_total - selected_total), 2), "uses_multi_store": use_split, "assignments": assignments}
+        assignments.append({"store_name": store.name, "address": store.address, "distance_km": distance_km(lat, lon, store.lat, store.lon), "item_cost": round(sum(x[2] for x in entries), 2), "navigation_url": f"https://www.google.com/maps/dir/?api=1&destination={store.lat},{store.lon}", "items": [{"ingredient_name": x[0].ingredient_name, "quantity": x[0].required_qty, "unit": x[0].unit} for x in entries]})
+    split_item_cost = round(sum(cost for entries in split.values() for _, _, cost in entries), 2)
+    baseline_item_cost = round(sum(cost for entries in baseline_groups.values() for _, _, cost in entries), 2)
+    return {"single_store_total": baseline_total, "optimized_total": selected_total, "travel_distance_km": selected_distance, "net_savings": round(max(0, baseline_total - selected_total), 2), "uses_multi_store": len(split) > 1, "assignments": assignments, "item_cost_usd": split_item_cost, "single_store_item_cost_usd": baseline_item_cost, "ingredient_savings_usd": round(max(0,baseline_item_cost-split_item_cost),2)}

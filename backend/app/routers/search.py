@@ -6,6 +6,7 @@ from ..database import get_session
 from ..main import current_user
 from ..models import Ingredient, Recipe, StorePrice, User
 from ..schemas import UnifiedSearchResponse
+from ..services.preferences import id_list, recipe_is_allowed
 
 router=APIRouter(prefix="/api/search",tags=["search"])
 
@@ -14,6 +15,11 @@ async def unified_search(q: str = Query(min_length=1,max_length=80), user: User 
     pattern=f"%{q.strip().lower()}%"
     recipes=(await session.scalars(select(Recipe).where(func.lower(Recipe.title).like(pattern)).options(selectinload(Recipe.ingredients)).limit(10))).all()
     ingredients=(await session.scalars(select(Ingredient).where(func.lower(Ingredient.name).like(pattern)).limit(10))).all()
+    all_ingredients=(await session.scalars(select(Ingredient))).all()
+    ingredient_ids={item.name.lower():item.id for item in all_ingredients}
+    excluded=set(id_list(user.excluded_ingredient_ids))
+    recipes=[recipe for recipe in recipes if recipe_is_allowed(recipe,excluded,ingredient_ids)]
+    ingredients=[ingredient for ingredient in ingredients if ingredient.id not in excluded]
     dishes=[]
     for recipe in recipes:
         cost=0.0
