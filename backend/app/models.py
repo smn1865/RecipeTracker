@@ -57,6 +57,10 @@ class Recipe(Base):
     fat_g: Mapped[float] = mapped_column(Float)
     meal_type: Mapped[str] = mapped_column(String(32), default="Lunch", index=True)
     tags: Mapped[str] = mapped_column(String(255), default="Quick & Easy")
+    serving_count: Mapped[int] = mapped_column(Integer, default=1)
+    total_weight_grams: Mapped[float] = mapped_column(Float, default=0)
+    is_community: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     ingredients: Mapped[list["RecipeIngredient"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
 class RecipeIngredient(Base):

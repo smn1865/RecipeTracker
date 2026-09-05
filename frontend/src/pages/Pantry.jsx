@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LocationBadge } from "../components/LocationBadge";
 
 export function Pantry({ headers, apiUrl = "" }) {
   const [items, setItems] = useState([]);
@@ -67,11 +68,11 @@ export function Pantry({ headers, apiUrl = "" }) {
   }
 
   return (
-    <section className="rounded-[2rem] bg-white p-5 shadow-sm sm:p-7">
+    <section className="rounded-[2rem] border border-slate-800/10 bg-white p-5 shadow-sm sm:p-7">
       <header>
-        <p className="text-sm font-bold text-sage">LIVE INVENTORY</p>
-        <h2 className="text-3xl font-bold text-forest">Your pantry</h2>
-        <p className="mt-1 text-sm text-ink/55">
+        <p className="text-sm font-bold text-emerald-600">LIVE INVENTORY</p>
+        <div className="flex flex-wrap items-center gap-3"><h2 className="text-3xl font-bold text-emerald-700">Your pantry</h2><LocationBadge/></div>
+        <p className="mt-1 text-sm text-zinc-900/55">
           Recipe availability and sourcing costs update from these exact balances.
         </p>
       </header>
@@ -85,10 +86,10 @@ export function Pantry({ headers, apiUrl = "" }) {
               setSelected(null);
             }}
             placeholder="Search ingredient…"
-            className="w-full rounded-xl border border-forest/10 bg-cream px-4 py-3 outline-none focus:border-sage"
+            className="w-full rounded-xl border border-emerald-700/10 bg-slate-100 px-4 py-3 outline-none focus:border-emerald-600"
           />
           {results.length > 0 && (
-            <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-forest/10 bg-white p-1 shadow-xl">
+            <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-emerald-700/10 bg-white p-1 shadow-xl">
               {results.map((ingredient) => (
                 <button
                   type="button"
@@ -98,7 +99,7 @@ export function Pantry({ headers, apiUrl = "" }) {
                     setQuery(ingredient.name);
                     setResults([]);
                   }}
-                  className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-mint"
+                  className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100"
                 >
                   {ingredient.name}
                 </button>
@@ -113,24 +114,24 @@ export function Pantry({ headers, apiUrl = "" }) {
           step="any"
           value={quantity}
           onChange={(event) => setQuantity(event.target.value)}
-          className="rounded-xl border border-forest/10 bg-cream px-3 py-3"
+          className="rounded-xl border border-emerald-700/10 bg-slate-100 px-3 py-3"
         />
-        <select value={unit} onChange={(event) => setUnit(event.target.value)} className="rounded-xl border border-forest/10 bg-cream px-3 py-3">
+        <select value={unit} onChange={(event) => setUnit(event.target.value)} className="rounded-xl border border-emerald-700/10 bg-slate-100 px-3 py-3">
           {["g", "kg", "oz", "lb", "ml", "L", "each"].map((value) => <option key={value}>{value}</option>)}
         </select>
-        <button className="rounded-xl bg-forest px-5 py-3 font-bold text-white">Add stock</button>
+        <button className="rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">Add stock</button>
       </form>
-      {error && <p className="mt-2 text-sm font-semibold text-amber-700">{error}</p>}
+      {error && <p className="mt-2 text-sm font-semibold text-slate-800">{error}</p>}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
-          <article key={item.id} className="rounded-2xl bg-cream p-4">
+          <article key={item.id} className="rounded-2xl bg-slate-100 p-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <b className="capitalize text-forest">{item.ingredient_name}</b>
-                <p className="text-xs text-ink/45">{item.expiration_date ? `Expires ${item.expiration_date}` : "No expiration date"}</p>
+                <b className="capitalize text-emerald-700">{item.ingredient_name}</b>
+                <p className="text-xs text-zinc-900/45">{item.expiration_date ? `Expires ${item.expiration_date}` : "No expiration date"}</p>
               </div>
-              <button onClick={() => patchItem(item.id, { remove: true })} className="text-xs font-bold text-amber-700">Remove</button>
+              <button onClick={() => patchItem(item.id, { remove: true })} className="text-xs font-bold text-slate-800">Remove</button>
             </div>
             <div className="mt-3 flex gap-2">
               <input
@@ -140,19 +141,19 @@ export function Pantry({ headers, apiUrl = "" }) {
                 step="any"
                 defaultValue={item.quantity}
                 onBlur={(event) => patchItem(item.id, { quantity: +event.target.value })}
-                className="min-w-0 flex-1 rounded-lg border border-forest/10 bg-white px-3 py-2 font-bold"
+                className="min-w-0 flex-1 rounded-lg border border-emerald-700/10 bg-white px-3 py-2 font-bold"
               />
               <select
                 value={item.unit}
                 onChange={(event) => patchItem(item.id, { unit: event.target.value })}
-                className="rounded-lg border border-forest/10 bg-white px-2"
+                className="rounded-lg border border-emerald-700/10 bg-white px-2"
               >
                 {["g", "kg", "oz", "lb", "ml", "L", "each"].map((value) => <option key={value}>{value}</option>)}
               </select>
             </div>
           </article>
         ))}
-        {!items.length && <p className="text-sm text-ink/50">Your pantry is empty. Add an ingredient to start matching recipes.</p>}
+        {!items.length && <p className="text-sm text-zinc-900/50">Your pantry is empty. Add an ingredient to start matching recipes.</p>}
       </div>
     </section>
   );

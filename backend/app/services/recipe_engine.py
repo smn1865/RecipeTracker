@@ -25,13 +25,14 @@ def missing_for_recipe(recipe: Recipe, pantry: list[PantryItem]):
             ))
     return missing
 
-async def shopping_plan(session: AsyncSession, user: User, recipe: Recipe, pantry: list[PantryItem], radius_km: float = 5):
+async def shopping_plan(session: AsyncSession, user: User, recipe: Recipe, pantry: list[PantryItem], radius_km: float = 5,
+                        lat: float | None = None, lon: float | None = None):
     missing = missing_for_recipe(recipe, pantry)
     items, total = [], 0.0
     for ingredient in missing:
-        lat, lon = user_coordinates(getattr(user, "lat", None), getattr(user, "lon", None))
+        active_lat, active_lon = user_coordinates(lat if lat is not None else getattr(user, "lat", None), lon if lon is not None else getattr(user, "lon", None))
         options = await options_for_ingredient(session, ingredient.ingredient_name.lower(), ingredient.required_qty,
-                                               ingredient.unit, lat, lon, radius_km)
+                                               ingredient.unit, active_lat, active_lon, radius_km)
         best = options[0]
         total += best["estimated_cost"]
         items.append({"ingredient_name": ingredient.ingredient_name, "quantity": ingredient.required_qty,

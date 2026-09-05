@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Ingredient, LocalStore, Recipe, RecipeIngredient, StoreInventoryItem, StorePrice
 from ..seed import RECIPES as CORE_RECIPES, seed as seed_core
+from ..services.catalog import AMD_PER_USD, STORE_BRANCHES, fallback_package_price_amd
 
 # title, instructions, minutes, kcal, protein, carbs, fat, meal type, tags, exact requirements
 EXTRA_RECIPES = [
@@ -45,20 +46,24 @@ EXTRA_RECIPES = [
 ]
 
 BASE_PRICE = {"egg":.10,"chicken breast":.009,"salmon":.018,"trout":.016,"lean beef":.013,"pork loin":.010,"turkey":.011,"tuna":.012,"sardines":.009,"matzoon":.0045,"greek yogurt":.006,"milk":.0018,"cottage cheese":.0065,"butter":.012,"walnut":.018,"honey":.012,"lemon":.004,"mint":.016,"parsley":.010,"paprika":.020}
-STORE_DATA = [("Yerevan City",40.1792,44.4991,"12 Abovyan St"),("SAS",40.1850,44.5100,"5 Tumanyan St"),("Carrefour",40.1720,44.4920,"21 Mashtots Ave"),("Parma",40.1908,44.5156,"Komitas Ave"),("Evrika",40.1818,44.5231,"Khanjyan St")]
+STORE_DATA = [(item["name"],item["lat"],item["lon"],item["address"]) for item in STORE_BRANCHES]
 
 async def seed(session: AsyncSession):
     await seed_core(session)
     stores=(await session.scalars(select(LocalStore).order_by(LocalStore.id))).all()
-    for index,data in enumerate(STORE_DATA):
-        if index < len(stores):
-            stores[index].name,stores[index].lat,stores[index].lon,stores[index].address=data
+    by_key={(store.name,store.address):store for store in stores}
+    for data in STORE_DATA:
+        key=(data[0],data[3])
+        if key in by_key:
+            by_key[key].lat,by_key[key].lon=data[1],data[2]
         else:
-            store=LocalStore(name=data[0],lat=data[1],lon=data[2],address=data[3]);session.add(store);stores.append(store)
+            store=LocalStore(name=data[0],lat=data[1],lon=data[2],address=data[3]);session.add(store);stores.append(store);by_key[key]=store
     await session.flush()
     existing={item.title for item in (await session.scalars(select(Recipe))).all()}
+    existing_recipe_rows={item.title:item for item in (await session.scalars(select(Recipe))).all()}
     for title,instructions,prep,calories,protein,carbs,fat,meal,tags,ingredients in EXTRA_RECIPES:
-        if title in existing: continue
+        if title in existing:
+            continue
         recipe=Recipe(title=title,instructions=instructions,prep_time=prep,calories=calories,protein_g=protein,carbs_g=carbs,fat_g=fat,meal_type=meal,tags=tags)
         session.add(recipe);await session.flush()
         session.add_all([RecipeIngredient(recipe_id=recipe.id,ingredient_name=name,required_qty=quantity,unit=unit) for name,quantity,unit in ingredients])
@@ -79,13 +84,15 @@ async def seed(session: AsyncSession):
         rotation=sum(ord(char) for char in name)%len(stores)
         for index,store in enumerate(stores):
             factor=[.86,.94,1.0,1.07,1.14][(index-rotation)%5]
-            unit_price=round(base*factor,4)
+            package_amd=fallback_package_price_amd(name,package_size,unit,store_name=store.name)
+            package_usd=round(max(.01,package_amd/AMD_PER_USD),2)
+            unit_price=round(max(.000001,package_usd/package_size),6)
             price_key=(store.id,name,unit)
             if price_key in prices: prices[price_key].price_per_unit=unit_price;prices[price_key].price_amd_per_unit=round(unit_price*388,2)
             else: session.add(StorePrice(store_id=store.id,ingredient_name=name,price_per_unit=unit_price,price_amd_per_unit=round(unit_price*388,2),unit=unit))
             inventory_key=(store.id,name,unit)
-            package_price=round(unit_price*package_size,2)
+            package_price=package_usd
             if inventory_key in inventory:
-                inventory[inventory_key].package_size=package_size;inventory[inventory_key].price_usd=package_price;inventory[inventory_key].price_amd=round(package_price*388,2)
-            else: session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=package_size,unit=unit,price_usd=package_price,price_amd=round(package_price*388,2),in_stock=True))
+                inventory[inventory_key].package_size=package_size;inventory[inventory_key].price_usd=package_price;inventory[inventory_key].price_amd=package_amd
+            else: session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=package_size,unit=unit,price_usd=package_price,price_amd=package_amd,in_stock=True))
     await session.commit()

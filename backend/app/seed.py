@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models import Ingredient, LocalStore, Recipe, RecipeIngredient, StoreInventoryItem, StorePrice
+from .services.catalog import AMD_PER_USD, fallback_package_price_amd
 
 RECIPES = [
  ("Berry Yogurt Oats", "Stir oats into yogurt and top with banana.", 5, 410, 26, 58, 9, "Breakfast", "High Protein,Quick & Easy,Budget Friendly", [("oats",70,"g"),("greek yogurt",200,"g"),("banana",120,"g")]),
@@ -61,5 +62,6 @@ async def seed(session: AsyncSession):
             if (store.id,name) not in existing_inventory:
                 unit="each" if name=="egg" else "g"
                 size=12 if unit=="each" else 500
-                session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=size,unit=unit,price_usd=round(base*size,2),in_stock=True))
+                package_amd=fallback_package_price_amd(name,size,unit,store_name=store.name)
+                session.add(StoreInventoryItem(store_id=store.id,ingredient_name=name,package_size=size,unit=unit,price_usd=round(max(.01,package_amd/AMD_PER_USD),2),price_amd=package_amd,in_stock=True))
     await session.commit()

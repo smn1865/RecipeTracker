@@ -146,6 +146,7 @@ class IngredientNeed(BaseModel):
     ingredient_name: str
     quantity: float
     unit: str
+    estimated_cost_usd: float | None = None
 
 class RecipeSuggestion(BaseModel):
     id: int
@@ -168,6 +169,8 @@ class RecipeFilters(BaseModel):
 
 class StoreOption(BaseModel):
     store_name: str
+    branch_name: str = "Local Supermarket - Central"
+    street_address: str = "Central neighborhood market"
     address: str
     distance_km: float
     estimated_cost: float
@@ -197,6 +200,8 @@ class OptimizeRequest(BaseModel):
 
 class StoreAssignment(BaseModel):
     store_name: str
+    branch_name: str = "Local Supermarket - Central"
+    street_address: str = "Central neighborhood market"
     address: str
     distance_km: float
     items: list[IngredientNeed]
@@ -286,6 +291,40 @@ class AutoGenerateResponse(BaseModel):
     weekly_budget: float | None
     exceeds_budget: bool
 
+
+class CustomRecipeIngredient(BaseModel):
+    ingredient_name: str = Field(min_length=2, max_length=120)
+    grams: float = Field(gt=0, le=5000)
+
+
+class CustomRecipeCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=255)
+    prep_time: int = Field(gt=0, le=1440)
+    serving_count: int = Field(gt=0, le=50)
+    total_weight_grams: float = Field(gt=0, le=20000)
+    calories: int = Field(gt=0, le=20000)
+    protein_g: float = Field(ge=0, le=2000)
+    fat_g: float = Field(ge=0, le=2000)
+    carbs_g: float = Field(ge=0, le=3000)
+    ingredients: list[CustomRecipeIngredient] = Field(min_length=1, max_length=50)
+    instructions: str = Field(default="Prepare and combine the listed ingredients.", min_length=3, max_length=10000)
+    meal_type: Literal["Breakfast", "Lunch", "Dinner", "Snack"] = "Dinner"
+
+
+class CustomRecipeResponse(BaseModel):
+    id: int
+    title: str
+    prep_time: int
+    serving_count: int
+    total_weight_grams: float
+    calories: int
+    protein_g: float
+    fat_g: float
+    carbs_g: float
+    meal_type: str
+    is_community: bool
+    ingredients: list[CustomRecipeIngredient]
+
 class IngredientNutrition(BaseModel):
     id: int
     name: str
@@ -298,6 +337,8 @@ class IngredientNutrition(BaseModel):
 class IngredientStoreOption(BaseModel):
     store_id: int
     store_name: str
+    branch_name: str
+    street_address: str
     address: str
     distance_km: float
     price_usd: float
@@ -305,6 +346,9 @@ class IngredientStoreOption(BaseModel):
     unit: str
     in_stock: bool
     navigation_url: str
+    price: float
+    currency: str
+    maps_url: str
 
 class IngredientStoresResponse(BaseModel):
     ingredient: IngredientNutrition
@@ -335,6 +379,8 @@ class UnifiedSearchResponse(BaseModel):
 class RecipeIngredientStorePrice(BaseModel):
     store_id: int
     store_name: str
+    branch_name: str
+    street_address: str
     address: str
     distance_km: float
     package_size: float
@@ -342,10 +388,14 @@ class RecipeIngredientStorePrice(BaseModel):
     packages_needed: int
     price_per_package_usd: float
     unit_price_usd: float
+    normalized_unit: str
     extended_price_usd: float
     extended_price_local: float
     in_stock: bool
     navigation_url: str
+    price: float
+    currency: str
+    maps_url: str
 
 class RecipeIngredientSourcing(BaseModel):
     ingredient_id: int | None = None
@@ -375,6 +425,8 @@ class MealConsumeResponse(BaseModel):
 class MealStoreChoice(BaseModel):
     store_id: int
     store_name: str
+    branch_name: str
+    street_address: str
     address: str
     distance_km: float
     item_total_usd: float
@@ -384,6 +436,8 @@ class MealStoreChoice(BaseModel):
 class MealSplitStore(BaseModel):
     store_id: int
     store_name: str
+    branch_name: str
+    street_address: str
     address: str
     distance_km: float
     item_total_usd: float
@@ -403,9 +457,12 @@ class IngredientStoreAssignment(BaseModel):
     unit: str
     store_id: int
     store_name: str
+    branch_name: str
+    street_address: str
     address: str
     distance_km: float
     unit_price_usd: float
+    normalized_unit: str
     package_size: float
     package_unit: str
     packages_needed: int
@@ -415,6 +472,8 @@ class IngredientStoreAssignment(BaseModel):
 class ItemizedStoreGroup(BaseModel):
     store_id: int
     store_name: str
+    branch_name: str
+    street_address: str
     address: str
     distance_km: float
     subtotal_usd: float
@@ -430,6 +489,22 @@ class ItemizedSourcingPlan(BaseModel):
     total_with_travel_usd: float
     savings_vs_single_store_usd: float
 
+class StoreTradeoffChoice(BaseModel):
+    store_id: int
+    store_name: str
+    branch_name: str
+    street_address: str
+    address: str
+    distance_km: float
+    item_total_usd: float
+    savings_usd: float = 0
+    savings_local: float = 0
+    price_savings_usd: float = 0
+    travel_penalty_usd: float = 0
+    extra_distance_km: float = 0
+    badge_label: str
+    navigation_url: str
+
 class RecipeSourcingResponse(BaseModel):
     recipe_id: int
     recipe_title: str
@@ -442,3 +517,5 @@ class RecipeSourcingResponse(BaseModel):
     best_single_store: MealStoreChoice | None
     multi_store_split: MealMultiStoreChoice | None
     itemized_sourcing: ItemizedSourcingPlan
+    closest_store: StoreTradeoffChoice | None = None
+    value_recommended_store: StoreTradeoffChoice | None = None

@@ -2,23 +2,67 @@
 from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..models import LocalStore, StoreInventoryItem, StorePrice
+from ..models import Ingredient, LocalStore, StoreInventoryItem, StorePrice
 from .location import distance_km, fallback_option, user_coordinates
+from .catalog import STORE_CHAINS, branch_name_for, full_street_address, package_quote, unique_physical_branches
+
+def choose_store_tradeoff(candidates: list[dict], currency: str="AMD", symbol: str="֏", rate: float=388.0,
+                          percent_threshold: float=.15, absolute_threshold_usd: float=2.50,
+                          distance_penalty_usd_per_km: float=.15):
+    """Return proximity-first and materially-cheaper farther single-store choices."""
+    closest_candidate=min(candidates,key=lambda item:item["distance_km"],default=None)
+    if not closest_candidate:return None,None
+    closest={**closest_candidate,"savings_usd":0.0,"savings_local":0.0,"extra_distance_km":0.0,"badge_label":"Closest Option"}
+    farther=[item for item in candidates if item["distance_km"]>closest_candidate["distance_km"]]
+    if not farther:return closest,None
+    evaluated=[]
+    for item in farther:
+        price_saved=max(0.,closest_candidate["item_total_usd"]-item["item_total_usd"])
+        extra=max(0.,item["distance_km"]-closest_candidate["distance_km"])
+        travel_penalty=extra*distance_penalty_usd_per_km
+        evaluated.append((price_saved-travel_penalty,price_saved,extra,travel_penalty,item))
+    net_saved,price_saved,extra,travel_penalty,best_value=max(evaluated,key=lambda row:row[0])
+    qualifies=(price_saved>=absolute_threshold_usd or (closest_candidate["item_total_usd"]>0 and price_saved/closest_candidate["item_total_usd"]>=percent_threshold)) and net_saved>0
+    if not qualifies:return closest,None
+    saved=round(net_saved,2);saved_local=round(saved*rate,2);display=f"{symbol}{saved_local:,.0f}" if currency!="USD" else f"${saved:.2f}"
+    value={**best_value,"savings_usd":saved,"savings_local":saved_local,"price_savings_usd":round(price_saved,2),
+           "travel_penalty_usd":round(travel_penalty,2),"extra_distance_km":round(extra,2),
+           "badge_label":f"Worth the Trip (Save {display} despite extra {extra:.1f} km)"}
+    return closest,value
 
 async def optimize_basket(session: AsyncSession, ingredients: list, lat: float | None, lon: float | None, distance_penalty: float = .15, max_stores: int = 3):
     lat, lon = user_coordinates(lat, lon)
-    stores = (await session.scalars(select(LocalStore))).all()
+    stores = [store for store in unique_physical_branches((await session.scalars(select(LocalStore))).all()) if store.name in STORE_CHAINS]
     by_store = defaultdict(list)
     for ingredient in ingredients:
         found = False
+        canonical = await session.scalar(select(Ingredient).where(Ingredient.name == ingredient.ingredient_name.lower()))
         for store in stores:
-            inventory = await session.scalar(select(StoreInventoryItem).where(StoreInventoryItem.store_id == store.id, StoreInventoryItem.ingredient_name == ingredient.ingredient_name.lower()))
+            inventory = await session.scalar(select(StoreInventoryItem).where(
+                StoreInventoryItem.store_id == store.id,
+                StoreInventoryItem.ingredient_name == ingredient.ingredient_name.lower(),
+                StoreInventoryItem.unit == ingredient.unit,
+            ))
             if inventory and not inventory.in_stock:
                 continue
             price = await session.scalar(select(StorePrice).where(StorePrice.store_id == store.id, StorePrice.ingredient_name == ingredient.ingredient_name.lower(), StorePrice.unit == ingredient.unit))
-            if price:
-                found = True
-                by_store[store.id].append((ingredient, store, round(price.price_per_unit * ingredient.required_qty, 2)))
+            package_size = (
+                inventory.package_size if inventory and inventory.package_size > 0
+                else canonical.package_size if canonical and canonical.package_unit == ingredient.unit and canonical.package_size
+                else None
+            )
+            estimate = package_quote(
+                ingredient.ingredient_name, ingredient.required_qty, ingredient.unit,
+                package_size=package_size,
+                package_unit=inventory.unit if inventory else canonical.package_unit if canonical else ingredient.unit,
+                package_price_usd=inventory.price_usd if inventory else None,
+                unit_price_usd=price.price_per_unit if price else None,
+                category=canonical.category if canonical else None,
+                store_name=store.name,
+            )
+            cost = estimate["estimated_cost"]
+            found = True
+            by_store[store.id].append((ingredient, store, cost))
         if not found:
             fallback = fallback_option(ingredient.ingredient_name, ingredient.required_qty, ingredient.unit)
             synthetic = LocalStore(id=-1, name=fallback["store_name"], address=fallback["address"], lat=lat, lon=lon)
@@ -56,7 +100,9 @@ async def optimize_basket(session: AsyncSession, ingredients: list, lat: float |
     assignments = []
     for entries in selected.values():
         store = entries[0][1]
-        assignments.append({"store_name": store.name, "address": store.address, "distance_km": distance_km(lat, lon, store.lat, store.lon), "item_cost": round(sum(x[2] for x in entries), 2), "navigation_url": f"https://www.google.com/maps/dir/?api=1&destination={store.lat},{store.lon}", "items": [{"ingredient_name": x[0].ingredient_name, "quantity": x[0].required_qty, "unit": x[0].unit} for x in entries]})
+        assignments.append({"store_name": store.name, "branch_name": branch_name_for(store.name, store.address),
+                            "street_address": full_street_address(store.address), "address": store.address,
+                            "distance_km": distance_km(lat, lon, store.lat, store.lon), "item_cost": round(sum(x[2] for x in entries), 2), "navigation_url": f"https://www.google.com/maps/dir/?api=1&destination={store.lat},{store.lon}", "items": [{"ingredient_name": x[0].ingredient_name, "quantity": x[0].required_qty, "unit": x[0].unit} for x in entries]})
     split_item_cost = round(sum(cost for entries in split.values() for _, _, cost in entries), 2)
     baseline_item_cost = round(sum(cost for entries in baseline_groups.values() for _, _, cost in entries), 2)
     return {"single_store_total": baseline_total, "optimized_total": selected_total, "travel_distance_km": selected_distance, "net_savings": round(max(0, baseline_total - selected_total), 2), "uses_multi_store": len(split) > 1, "assignments": assignments, "item_cost_usd": split_item_cost, "single_store_item_cost_usd": baseline_item_cost, "ingredient_savings_usd": round(max(0,baseline_item_cost-split_item_cost),2)}

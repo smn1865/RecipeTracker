@@ -15,7 +15,7 @@ from .db.seed import seed
 from .services.health import activity_from_assessment, bmi_status, calculate_bmi, nutrition_targets
 from .services.geocoding import geocode_address
 from .services.recipe_engine import shopping_plan, smart_suggestions
-from .services.location import get_currency_for_coords
+from .services.location import active_user_coordinates, get_currency_for_coords
 from .services.optimizer import optimize_basket
 
 SECRET = "replace-me-with-an-environment-secret"
@@ -35,6 +35,17 @@ async def lifespan(app: FastAPI):
         recipe_columns = {row[1] for row in recipes}
         for column, sql_type in {"meal_type": "VARCHAR(32) DEFAULT 'Lunch'", "tags": "VARCHAR(255) DEFAULT 'Quick & Easy'"}.items():
             if column not in recipe_columns: await connection.exec_driver_sql(f"ALTER TABLE recipes ADD COLUMN {column} {sql_type}")
+        recipe_community_additions = {
+            "serving_count": "INTEGER DEFAULT 1",
+            "total_weight_grams": "FLOAT DEFAULT 0",
+            "is_community": "BOOLEAN DEFAULT 0",
+            "submitted_by_user_id": "INTEGER",
+        }
+        for column, sql_type in recipe_community_additions.items():
+            if column not in recipe_columns:
+                await connection.exec_driver_sql(f"ALTER TABLE recipes ADD COLUMN {column} {sql_type}")
+        await connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_recipes_is_community ON recipes (is_community)")
+        await connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_recipes_submitted_by_user_id ON recipes (submitted_by_user_id)")
         user_profile_additions = {
             "health_goal": "VARCHAR(32) DEFAULT 'maintenance'",
             "target_calories": "INTEGER DEFAULT 0",
@@ -123,8 +134,9 @@ async def geocode(payload: GeocodeRequest):
     return geocode_address(payload.address)
 
 @app.get("/auth/profile", response_model=UserProfile)
-async def get_profile(user: User = Depends(current_user)):
-    currency, symbol, rate = get_currency_for_coords(user.lat, user.lon)
+async def get_profile(live_lat: float | None=Header(None,alias="X-User-Latitude"), live_lon: float | None=Header(None,alias="X-User-Longitude"), user: User = Depends(current_user)):
+    lat,lon=active_user_coordinates(live_lat,live_lon,user.lat,user.lon)
+    currency, symbol, rate = get_currency_for_coords(lat,lon)
     return {"name": user.name, "age": user.age, "height_cm": user.height_cm, "weight_kg": user.weight_kg,
             "address": user.address, "lat": user.lat, "lon": user.lon, "gender": user.gender,
             "daily_routine": user.daily_routine, "exercise_frequency": user.exercise_frequency,
@@ -170,22 +182,28 @@ async def generate_smart(filters: RecipeFilters = RecipeFilters(), user: User = 
     return await smart_suggestions(session, user, targets["daily_calories"], filters.category, filters.tag, filters.limit)
 
 @app.get("/shopping-list/sourcing", response_model=SourcingPlanResponse)
-async def sourcing(recipe_id: int = Query(gt=0), radius_km: float = Query(5, gt=0, le=50), user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+async def sourcing(recipe_id: int = Query(gt=0), radius_km: float = Query(5, gt=0, le=50),
+                   live_lat: float | None=Header(None,alias="X-User-Latitude"), live_lon: float | None=Header(None,alias="X-User-Longitude"),
+                   user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     recipe = await session.get(Recipe, recipe_id, options=[selectinload(Recipe.ingredients)])
     if not recipe: raise HTTPException(404, "Recipe not found")
     pantry = (await session.scalars(select(PantryItem).where(PantryItem.user_id == user.id))).all()
-    items, total = await shopping_plan(session, user, recipe, pantry, radius_km)
-    currency, symbol, rate = get_currency_for_coords(getattr(user, "lat", None), getattr(user, "lon", None))
+    lat,lon=active_user_coordinates(live_lat,live_lon,user.lat,user.lon)
+    items, total = await shopping_plan(session, user, recipe, pantry, radius_km,lat,lon)
+    currency, symbol, rate = get_currency_for_coords(lat,lon)
     return {"recipe_id": recipe.id, "recipe_title": recipe.title, "items": items, "total_cost": total,
             "local_currency": currency, "local_currency_symbol": symbol, "usd_to_local_rate": rate}
 
 @app.post("/api/sourcing/optimize", response_model=OptimizeResponse)
-async def optimize_sourcing(payload: OptimizeRequest, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+async def optimize_sourcing(payload: OptimizeRequest, live_lat: float | None=Header(None,alias="X-User-Latitude"),
+                            live_lon: float | None=Header(None,alias="X-User-Longitude"),
+                            user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     recipe = await session.get(Recipe, payload.recipe_id, options=[selectinload(Recipe.ingredients)])
     if not recipe: raise HTTPException(404, "Recipe not found")
     pantry = (await session.scalars(select(PantryItem).where(PantryItem.user_id == user.id))).all()
     from .services.recipe_engine import missing_for_recipe
-    return await optimize_basket(session, missing_for_recipe(recipe, pantry), user.lat, user.lon, payload.distance_penalty, payload.max_stores)
+    lat,lon=active_user_coordinates(live_lat,live_lon,user.lat,user.lon)
+    return await optimize_basket(session, missing_for_recipe(recipe, pantry), lat, lon, payload.distance_penalty, payload.max_stores)
 
 from .routers.stores import router as stores_router
 from .routers.planner import router as planner_router

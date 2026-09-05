@@ -4,7 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        culinary: { emerald: "#047857", gold: "#f59e0b", ink: "#18181b", mist: "#f1f5f9" },
+        culinary: {
+          leaf: "#059669",
+          forest: "#065f46",
+          gold: "#f59e0b",
+          charcoal: "#0f172a",
+          mist: "#f1f5f9",
+          teal: "#115e59",
+        },
       },
     },
   },

@@ -1,5 +1,5 @@
 import pytest
-from app.services.location import distance_km, generated_neighborhood_options, options_for_ingredient, user_coordinates
+from app.services.location import active_user_coordinates, distance_km, generated_neighborhood_options, options_for_ingredient, user_coordinates
 
 def test_distance_and_nearest_price_sorting_contract():
     assert distance_km(40.1792, 44.4991, 40.1792, 44.4991) == 0
@@ -32,3 +32,5 @@ def test_free_store_fallback_always_has_navigation_data():
     assert fallback[0]["distance_km"] > 0
     assert fallback[0]["estimated_cost"] >= 0
     assert user_coordinates(None, None) == (40.1872, 44.5152)
+    assert active_user_coordinates(40.2,44.6,1,2)==(40.2,44.6)
+    assert active_user_coordinates(None,None,40.1,44.5)==(40.1,44.5)

@@ -12,4 +12,6 @@ The first startup seeds sample recipes, three nearby stores, and localized ingre
 
 Address lookup uses OpenStreetMap Nominatim through `/location/geocode`; no API key is required. Registration also offers browser location detection and falls back to central Yerevan (`40.1872, 44.5152`) when location resolution is unavailable.
 
+Community recipe moderation optionally uses Gemini structured output. Set `GEMINI_API_KEY` and, optionally, `GEMINI_MODEL` (defaults to `gemini-2.5-flash-lite`) before starting the API. Without a Gemini key, the endpoint remains available using deterministic checks for macro calories, ingredient weights, duplicates, and title structure.
+
 `services/location.py` is a provider boundary: replace its seeded SQL lookup with a Google Places/geocoding adapter without changing the recipe or sourcing API.

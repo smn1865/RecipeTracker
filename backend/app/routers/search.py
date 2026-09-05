@@ -7,6 +7,7 @@ from ..main import current_user
 from ..models import Ingredient, Recipe, StorePrice, User
 from ..schemas import UnifiedSearchResponse
 from ..services.preferences import id_list, recipe_is_allowed
+from ..services.catalog import package_quote
 
 router=APIRouter(prefix="/api/search",tags=["search"])
 
@@ -24,11 +25,18 @@ async def unified_search(q: str = Query(min_length=1,max_length=80), user: User 
     for recipe in recipes:
         cost=0.0
         for item in recipe.ingredients:
-            price=await session.scalar(select(func.min(StorePrice.price_per_unit)).where(StorePrice.ingredient_name==item.ingredient_name.lower(),StorePrice.unit==item.unit))
-            cost+=(price or (.005 if item.unit=="g" else .75))*item.required_qty
-        dishes.append({"id":recipe.id,"title":recipe.title,"meal_type":recipe.meal_type,"estimated_cost_usd":round(cost,2),"calories":recipe.calories})
+            ingredient=next((value for value in all_ingredients if value.name.lower()==item.ingredient_name.lower()),None)
+            price=await session.scalar(select(func.min(StorePrice.price_per_unit)).where(StorePrice.ingredient_name==item.ingredient_name.lower(),StorePrice.unit==item.unit,StorePrice.price_per_unit>0))
+            quote=package_quote(item.ingredient_name,item.required_qty,item.unit,
+                                package_size=ingredient.package_size if ingredient else None,
+                                package_unit=ingredient.package_unit if ingredient else item.unit,
+                                unit_price_usd=price,category=ingredient.category if ingredient else None)
+            cost+=quote["estimated_cost"]
+        dishes.append({"id":recipe.id,"title":recipe.title,"meal_type":recipe.meal_type,"estimated_cost_usd":round(max(.01,cost),2),"calories":recipe.calories})
     items=[]
     for ingredient in ingredients:
-        price=await session.scalar(select(func.min(StorePrice.price_per_unit)).where(StorePrice.ingredient_name==ingredient.name))
-        items.append({"id":ingredient.id,"name":ingredient.name,"estimated_cost_usd":round((price or .005)*1000,2),"unit":"kg"})
+        price=await session.scalar(select(func.min(StorePrice.price_per_unit)).where(StorePrice.ingredient_name==ingredient.name,StorePrice.price_per_unit>0))
+        unit=ingredient.package_unit or "g";quantity=1000 if unit=="g" else 1
+        quote=package_quote(ingredient.name,quantity,unit,package_size=ingredient.package_size,package_unit=unit,unit_price_usd=price,category=ingredient.category)
+        items.append({"id":ingredient.id,"name":ingredient.name,"estimated_cost_usd":quote["estimated_cost"],"unit":quote["normalized_unit"]})
     return {"dishes":dishes,"ingredients":items}

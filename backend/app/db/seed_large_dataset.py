@@ -17,7 +17,6 @@ import csv
 import json
 import os
 import re
-import zlib
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -28,16 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from ..database import Base
 from ..models import Ingredient, LocalStore, Recipe, RecipeIngredient, StoreInventoryItem, StorePrice
+from ..services.catalog import AMD_PER_USD, STORE_BRANCHES, fallback_package_price_amd
 
 OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
 OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
-AMD_PER_USD = 388.0
 DEFAULT_BATCH_SIZE = 5_000
 STORE_FIXTURES = [
-    {"name": "Yerevan City", "lat": 40.1792, "lon": 44.4991, "address": "12 Abovyan St, Yerevan"},
-    {"name": "SAS", "lat": 40.1850, "lon": 44.5100, "address": "5 Tumanyan St, Yerevan"},
-    {"name": "Carrefour", "lat": 40.1720, "lon": 44.4920, "address": "21 Mashtots Ave, Yerevan"},
-    {"name": "Parma", "lat": 40.1908, "lon": 44.5156, "address": "Komitas Ave, Yerevan"},
+    {key: value for key, value in branch.items() if key != "branch_name"}
+    for branch in STORE_BRANCHES
 ]
 
 
@@ -191,7 +188,18 @@ def ingredient_mapping(record: dict[str, Any]) -> dict[str, Any] | None:
     name = str(record.get("name") or record.get("ingredient_name") or "").strip()
     if not name: return None
     size, unit = normalize_package(record.get("package_size") or record.get("quantity"), record.get("package_unit") or record.get("unit"))
-    return {"name":name.lower()[:120],"category":str(record.get("category") or "uncategorized").lower()[:80],"barcode":str(record.get("barcode") or "").strip() or None,"package_size":size,"package_unit":unit,"calories_per_100g":_number(record.get("calories_per_100g",record.get("calories",0))),"protein_g_per_100g":_number(record.get("protein_g_per_100g",record.get("protein_g",record.get("protein",0)))),"fat_g_per_100g":_number(record.get("fat_g_per_100g",record.get("fat_g",record.get("fat",0)))),"carbs_g_per_100g":_number(record.get("carbs_g_per_100g",record.get("carbs_g",record.get("carbs",0)))),"fiber_g_per_100g":_number(record.get("fiber_g_per_100g",record.get("fiber_g",record.get("fiber",0))))}
+    return {
+        "name": name.lower()[:120],
+        "category": str(record.get("category") or "uncategorized").lower()[:80],
+        "barcode": str(record.get("barcode") or "").strip() or None,
+        "package_size": size,
+        "package_unit": unit,
+        "calories_per_100g": _number(record.get("calories_per_100g", record.get("calories", 0))),
+        "protein_g_per_100g": _number(record.get("protein_g_per_100g", record.get("protein_g", record.get("protein", 0)))),
+        "fat_g_per_100g": _number(record.get("fat_g_per_100g", record.get("fat_g", record.get("fat", 0)))),
+        "carbs_g_per_100g": _number(record.get("carbs_g_per_100g", record.get("carbs_g", record.get("carbs", 0)))),
+        "fiber_g_per_100g": _number(record.get("fiber_g_per_100g", record.get("fiber_g", record.get("fiber", 0)))),
+    }
 
 
 def _recipe_ingredients(value: Any) -> list[dict[str, Any]]:
@@ -254,32 +262,40 @@ async def bulk_insert_recipes(session: AsyncSession, records: Iterable[dict[str,
 
 
 async def ensure_local_stores(session: AsyncSession) -> list[LocalStore]:
-    existing={store.name:store for store in (await session.scalars(select(LocalStore))).all()}
+    existing={(store.name,store.address):store for store in (await session.scalars(select(LocalStore))).all()}
     for fixture in STORE_FIXTURES:
-        if fixture["name"] not in existing:
-            store=LocalStore(**fixture);session.add(store);existing[fixture["name"]]=store
+        key=(fixture["name"],fixture["address"])
+        if key not in existing:
+            store=LocalStore(**fixture);session.add(store);existing[key]=store
+        else:
+            existing[key].lat=fixture["lat"];existing[key].lon=fixture["lon"]
     await session.commit()
-    return [existing[item["name"]] for item in STORE_FIXTURES]
+    return [existing[(item["name"],item["address"])] for item in STORE_FIXTURES]
 
 
 def _base_package_amd(category: str, package_size: float, unit: str) -> float:
-    category_factor={"meat":2.5,"fish":3.0,"dairy":1.25,"produce":.8,"beverage":.9,"packaged food":1.15}.get(category.lower(),1.0)
-    scale=1 if unit=="each" else max(.2,package_size/(1000 if unit in {"g","ml"} else 1))
-    return max(180,round(950*category_factor*scale,2))
+    return fallback_package_price_amd("generic ingredient", package_size, unit, category)
 
 
 async def generate_local_store_prices(session: AsyncSession,batch_size: int=DEFAULT_BATCH_SIZE,usd_to_amd: float=AMD_PER_USD) -> tuple[int,int]:
     stores=await ensure_local_stores(session);ingredients=(await session.execute(select(Ingredient.name,Ingredient.category,Ingredient.package_size,Ingredient.package_unit))).all()
-    price_keys={(row.store_id,row.ingredient_name,row.unit) for row in (await session.execute(select(StorePrice.store_id,StorePrice.ingredient_name,StorePrice.unit))).all()}
-    inventory_keys={(row.store_id,row.ingredient_name,row.unit) for row in (await session.execute(select(StoreInventoryItem.store_id,StoreInventoryItem.ingredient_name,StoreInventoryItem.unit))).all()}
+    price_rows={(row.store_id,row.ingredient_name,row.unit):row for row in (await session.scalars(select(StorePrice))).all()}
+    inventory_rows={(row.store_id,row.ingredient_name,row.unit):row for row in (await session.scalars(select(StoreInventoryItem))).all()}
     prices=[];inventory=[];price_count=inventory_count=0
     for name,category,package_size,package_unit in ingredients:
-        unit=package_unit or "g";size=package_size or (1 if unit=="each" else 500);base_amd=_base_package_amd(category or "",size,unit);rotation=zlib.crc32(name.encode())%len(stores)
+        unit=package_unit or "g";size=package_size or (1 if unit=="each" else 500)
         for index,store in enumerate(stores):
-            package_amd=round(base_amd*[.88,.96,1.04,1.12][(index-rotation)%4],2);package_usd=round(package_amd/usd_to_amd,2);amd_per_unit=round(package_amd/max(size,1e-9),4);usd_per_unit=round(amd_per_unit/usd_to_amd,6)
+            package_amd=fallback_package_price_amd(name,size,unit,category,store.name)
+            package_usd=round(max(.01,package_amd/usd_to_amd),2);amd_per_unit=round(package_amd/max(size,1e-9),4);usd_per_unit=round(max(.000001,amd_per_unit/usd_to_amd),6)
             key=(store.id,name,unit)
-            if key not in price_keys:prices.append({"store_id":store.id,"ingredient_name":name,"price_per_unit":usd_per_unit,"price_amd_per_unit":amd_per_unit,"unit":unit});price_keys.add(key)
-            if key not in inventory_keys:inventory.append({"store_id":store.id,"ingredient_name":name,"package_size":size,"unit":unit,"price_usd":package_usd,"price_amd":package_amd,"in_stock":True});inventory_keys.add(key)
+            if key not in price_rows:prices.append({"store_id":store.id,"ingredient_name":name,"price_per_unit":usd_per_unit,"price_amd_per_unit":amd_per_unit,"unit":unit})
+            elif price_rows[key].price_per_unit<=0 or price_rows[key].price_amd_per_unit<=0:
+                price_rows[key].price_per_unit,price_rows[key].price_amd_per_unit=usd_per_unit,amd_per_unit
+            if key not in inventory_rows:inventory.append({"store_id":store.id,"ingredient_name":name,"package_size":size,"unit":unit,"price_usd":package_usd,"price_amd":package_amd,"in_stock":True})
+            else:
+                current=inventory_rows[key]
+                if current.price_usd<=0:current.price_usd=package_usd
+                if current.price_amd<=0:current.price_amd=package_amd
             if len(prices)>=batch_size:await session.execute(insert(StorePrice),prices);await session.commit();price_count+=len(prices);prices=[]
             if len(inventory)>=batch_size:await session.execute(insert(StoreInventoryItem),inventory);await session.commit();inventory_count+=len(inventory);inventory=[]
     if prices:await session.execute(insert(StorePrice),prices);price_count+=len(prices)
